@@ -1,0 +1,26 @@
+{
+  "name": "swyftx-slam",
+  "version": "1.0.0",
+  "description": "The Swyftx Slam - Ranked Ping Pong Competition on Slack",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "init-db": "node -e \"require('./app.js').initDatabase()\""
+  },
+  "keywords": ["slack", "ping-pong", "elo", "tournament"],
+  "author": "Swyftx",
+  "license": "MIT",
+  "dependencies": {
+    "@slack/bolt": "^3.17.1",
+    "better-sqlite3": "^9.2.2",
+    "node-cron": "^3.0.3",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
