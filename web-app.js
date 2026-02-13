@@ -19,6 +19,9 @@ const SESSION_SECRET = process.env.SESSION_SECRET || 'swyftx-slam-secret-change-
 const LEAGUE_DURATION_WEEKS = 4;
 const GAMES_PER_WEEK = 2;
 
+// Trust proxy - Required for Render.com and other hosted platforms
+app.set('trust proxy', 1);
+
 // Database setup
 const dbPath = fs.existsSync('/data') ? '/data/swyftx-slam.db' : 'swyftx-slam.db';
 const db = new Database(dbPath);
@@ -34,6 +37,8 @@ app.use(session({
     saveUninitialized: false,
     cookie: { 
         secure: process.env.NODE_ENV === 'production',
+        httpOnly: true,
+        sameSite: 'lax',
         maxAge: 24 * 60 * 60 * 1000 // 24 hours
     }
 }));
