@@ -42,8 +42,8 @@ function getTier(elo) {
     if (elo >= 1250) return '🥇 Gold';
     if (elo >= 1200) return '🥈 Silver';
     if (elo >= 1150) return '🥉 Bronze';
-    if (elo >= 1075) return '📦 Cardboard';
-    return '⚪ Iron';
+    if (elo >= 1075) return '⚪ Iron';
+    return '📦 Cardboard';
 }
 
 /**
