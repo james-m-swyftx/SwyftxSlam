@@ -311,6 +311,10 @@ body.light-mode .btn {
     color: var(--text-heading);
 }
 
+.player-name a:hover {
+    text-decoration: underline;
+}
+
 .elo-rating {
     font-size: 1.2em;
     font-weight: bold;
@@ -520,6 +524,25 @@ body.light-mode .match-item:hover {
     flex: 1;
     text-align: center;
     color: var(--text-heading);
+}
+
+/* Rivals */
+.rival-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    transition: all 0.3s ease;
+}
+
+.rival-card:hover {
+    border-color: var(--accent-primary);
+    transform: translateY(-2px);
+}
+
+body.light-mode .rival-card:hover {
+    box-shadow: 0 4px 12px rgba(14, 203, 202, 0.15);
 }
 
 /* Responsive */

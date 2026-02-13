@@ -1,9 +1,0 @@
-node_modules
-npm-debug.log
-.env
-*.db
-*.db-wal
-*.db-shm
-.git
-.gitignore
-README.md

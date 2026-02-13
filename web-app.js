@@ -244,6 +244,33 @@ app.get('/api/player-history/:playerId', requireAuth, (req, res) => {
 });
 
 /**
+ * GET /api/player-matches/:playerId - Get match history for any player
+ */
+app.get('/api/player-matches/:playerId', requireAuth, (req, res) => {
+    try {
+        const playerId = parseInt(req.params.playerId);
+        
+        const matches = db.prepare(`
+            SELECT m.*,
+                   w.name as winner_name, w.elo_rating as winner_elo,
+                   l.name as loser_name, l.elo_rating as loser_elo,
+                   m.timestamp
+            FROM matches m
+            JOIN players w ON m.winner_id = w.id
+            JOIN players l ON m.loser_id = l.id
+            WHERE m.winner_id = ? OR m.loser_id = ?
+            ORDER BY m.timestamp DESC
+            LIMIT 30
+        `).all(playerId, playerId);
+        
+        res.json(matches);
+    } catch (error) {
+        console.error('Player matches error:', error);
+        res.status(500).json({ error: 'Failed to load matches' });
+    }
+});
+
+/**
  * GET /api/match-history - Get match history for current user or all
  */
 app.get('/api/match-history', requireAuth, (req, res) => {
@@ -439,6 +466,70 @@ app.get('/api/pairings', requireAuth, (req, res) => {
     }
 });
 
+/**
+ * GET /api/player/:playerId - Get public player profile
+ */
+app.get('/api/player/:playerId', requireAuth, (req, res) => {
+    try {
+        const playerId = parseInt(req.params.playerId);
+        
+        const player = db.prepare(`
+            SELECT p.*, u.username
+            FROM players p
+            JOIN users u ON p.user_id = u.id
+            WHERE p.id = ?
+        `).get(playerId);
+        
+        if (!player) {
+            return res.status(404).json({ error: 'Player not found' });
+        }
+        
+        res.json(player);
+    } catch (error) {
+        console.error('Player profile error:', error);
+        res.status(500).json({ error: 'Failed to load player profile' });
+    }
+});
+
+/**
+ * GET /api/rivals - Get rivals for current user
+ */
+app.get('/api/rivals', requireAuth, (req, res) => {
+    try {
+        const player = db.prepare('SELECT id FROM players WHERE user_id = ?').get(req.session.userId);
+        
+        if (!player) {
+            return res.json([]);
+        }
+        
+        // Get opponents with match stats
+        const rivals = db.prepare(`
+            SELECT 
+                p.id,
+                p.name,
+                p.elo_rating,
+                p.tier,
+                COUNT(*) as total_matches,
+                SUM(CASE WHEN m.winner_id = ? THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN m.loser_id = ? THEN 1 ELSE 0 END) as losses,
+                ABS(p.elo_rating - (SELECT elo_rating FROM players WHERE id = ?)) as elo_diff
+            FROM players p
+            JOIN matches m ON (m.winner_id = p.id OR m.loser_id = p.id)
+            WHERE (m.winner_id = ? OR m.loser_id = ?)
+                AND p.id != ?
+            GROUP BY p.id
+            HAVING total_matches >= 2
+            ORDER BY total_matches DESC, elo_diff ASC
+            LIMIT 5
+        `).all(player.id, player.id, player.id, player.id, player.id, player.id);
+        
+        res.json(rivals);
+    } catch (error) {
+        console.error('Rivals error:', error);
+        res.status(500).json({ error: 'Failed to load rivals' });
+    }
+});
+
 // ==================== CRON JOB: MATCH SCHEDULING ====================
 
 /**
@@ -570,6 +661,10 @@ app.get('/report', (req, res) => {
 
 app.get('/pairings', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'pairings.html'));
+});
+
+app.get('/player/:id', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'player.html'));
 });
 
 // Health check

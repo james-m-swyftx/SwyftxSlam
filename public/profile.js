@@ -31,6 +31,7 @@ async function loadProfile() {
         
         loadEloHistory();
         loadMatchHistory();
+        loadRivals();
         
     } catch (error) {
         console.error('Error loading profile:', error);
@@ -189,6 +190,85 @@ async function loadMatchHistory() {
         
     } catch (error) {
         console.error('Error loading match history:', error);
+    }
+}
+
+async function loadRivals() {
+    try {
+        const response = await fetch('/api/rivals');
+        const rivals = await response.json();
+        
+        if (rivals.length === 0) {
+            document.getElementById('rivalsList').classList.add('hidden');
+            document.getElementById('noRivals').classList.remove('hidden');
+            return;
+        }
+        
+        const container = document.getElementById('rivalsList');
+        let html = '';
+        
+        rivals.forEach((rival, index) => {
+            const winRate = ((rival.wins / rival.total_matches) * 100).toFixed(0);
+            const isAhead = rival.wins > rival.losses;
+            const recordColor = isAhead ? '#10b981' : rival.wins === rival.losses ? '#667eea' : '#ef4444';
+            
+            html += `
+                <div class="rival-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <div>
+                            <div style="font-size: 1.3em; font-weight: bold; color: var(--text-heading); margin-bottom: 5px;">
+                                ${index === 0 ? '👊 ' : ''}${rival.name}
+                            </div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">
+                                <span class="tier-badge">${rival.tier}</span>
+                                <span style="margin-left: 10px; font-weight: 600; color: var(--accent-primary);">${rival.elo_rating} ELO</span>
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 2em; font-weight: bold; color: ${recordColor};">
+                                ${rival.wins}-${rival.losses}
+                            </div>
+                            <div style="font-size: 0.85em; color: var(--text-secondary);">
+                                Your Record
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="background: var(--match-item-bg); border-radius: 8px; padding: 15px; margin-top: 10px;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <span style="color: var(--text-secondary);">Total Matches</span>
+                            <span style="font-weight: 600; color: var(--text-primary);">${rival.total_matches}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                            <span style="color: var(--text-secondary);">Your Win Rate</span>
+                            <span style="font-weight: 600; color: ${recordColor};">${winRate}%</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: var(--text-secondary);">ELO Difference</span>
+                            <span style="font-weight: 600; color: var(--text-primary);">${rival.elo_diff} points</span>
+                        </div>
+                        
+                        ${isAhead 
+                            ? `<div style="margin-top: 15px; padding: 10px; background: rgba(16, 185, 129, 0.1); border-left: 3px solid #10b981; border-radius: 4px; color: #10b981; font-weight: 600;">
+                                💪 You're dominating this rivalry!
+                               </div>`
+                            : rival.wins === rival.losses
+                            ? `<div style="margin-top: 15px; padding: 10px; background: var(--hover-bg); border-left: 3px solid var(--accent-primary); border-radius: 4px; color: var(--accent-primary); font-weight: 600;">
+                                ⚖️ Perfectly balanced rivalry!
+                               </div>`
+                            : `<div style="margin-top: 15px; padding: 10px; background: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; border-radius: 4px; color: #ef4444; font-weight: 600;">
+                                🔥 Time to turn the tables!
+                               </div>`
+                        }
+                    </div>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+        
+    } catch (error) {
+        console.error('Error loading rivals:', error);
     }
 }
 

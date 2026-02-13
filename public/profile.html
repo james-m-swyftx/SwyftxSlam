@@ -51,6 +51,7 @@
                 
                 <div class="tabs">
                     <button class="tab-btn active" onclick="switchTab('info', event)">Info</button>
+                    <button class="tab-btn" onclick="switchTab('rivals', event)">Rivals</button>
                     <button class="tab-btn" onclick="switchTab('graph', event)">ELO Graph</button>
                     <button class="tab-btn" onclick="switchTab('history', event)">Match History</button>
                 </div>
@@ -61,6 +62,15 @@
                     <p><strong>Username:</strong> <span id="playerUsername"></span></p>
                     <p><strong>Member since:</strong> <span id="memberSince"></span></p>
                     <p style="margin-top: 20px;"><strong>Win Rate:</strong> <span id="winRate"></span></p>
+                </div>
+                
+                <div id="tab-rivals" class="tab-content">
+                    <h3>⚔️ Your Rivals</h3>
+                    <p style="color: var(--text-secondary); margin-bottom: 20px;">Players you've faced most often</p>
+                    <div id="rivalsList"></div>
+                    <div id="noRivals" class="hidden" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                        <p>No rivals yet. Play at least 2 matches against someone to establish a rivalry!</p>
+                    </div>
                 </div>
                 
                 <div id="tab-graph" class="tab-content">

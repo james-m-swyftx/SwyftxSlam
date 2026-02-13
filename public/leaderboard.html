@@ -94,7 +94,11 @@
                     
                     html += `<tr>
                         <td class="rank ${rankClass}">${medal} ${rank}</td>
-                        <td class="player-name">${badgeHtml}${player.name}</td>
+                        <td class="player-name">
+                            <a href="/player/${player.id}" style="color: var(--text-heading); text-decoration: none;">
+                                ${badgeHtml}${player.name}
+                            </a>
+                        </td>
                         <td><span class="tier-badge">${player.tier}</span></td>
                         <td class="elo-rating">${player.elo_rating}</td>
                         <td>${player.wins}</td>

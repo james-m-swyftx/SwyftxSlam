@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Player Profile - The Swyftx Slam</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/theme.js"></script>
+</head>
+<body>
+    <div class="container">
+        <nav class="nav">
+            <div class="nav-brand" onclick="triggerEasterEgg()">🏓 The Swyftx Slam</div>
+            <div class="nav-links">
+                <a href="/feed">Feed</a>
+                <a href="/leaderboard">Leaderboard</a>
+                <a href="/profile">Profile</a>
+                <a href="/pairings">Pairings</a>
+                <a href="/report">Report Match</a>
+                <button id="themeToggle" class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">☀️</button>
+                <span class="nav-username" id="username"></span>
+                <button onclick="logout()">Logout</button>
+            </div>
+        </nav>
+        
+        <div class="card">
+            <div style="margin-bottom: 20px;">
+                <a href="/leaderboard" style="color: var(--accent-primary); text-decoration: none;">
+                    ← Back to Leaderboard
+                </a>
+            </div>
+            
+            <h1 id="playerTitle">👤 Player Profile</h1>
+            
+            <div id="loading" class="loading">Loading player profile...</div>
+            
+            <div id="playerContent" class="hidden">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="eloValue">-</div>
+                        <div class="stat-label">ELO Rating</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="tierValue">-</div>
+                        <div class="stat-label">Tier</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="winsValue">-</div>
+                        <div class="stat-label">Wins</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="lossesValue">-</div>
+                        <div class="stat-label">Losses</div>
+                    </div>
+                </div>
+                
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="switchTab('info', event)">Info</button>
+                    <button class="tab-btn" onclick="switchTab('graph', event)">ELO Graph</button>
+                    <button class="tab-btn" onclick="switchTab('history', event)">Match History</button>
+                </div>
+                
+                <div id="tab-info" class="tab-content active">
+                    <h3>Player Information</h3>
+                    <p><strong>Name:</strong> <span id="playerName"></span></p>
+                    <p><strong>Username:</strong> <span id="playerUsername"></span></p>
+                    <p><strong>Member since:</strong> <span id="memberSince"></span></p>
+                    <p style="margin-top: 20px;"><strong>Win Rate:</strong> <span id="winRate"></span></p>
+                    <p><strong>Total Games:</strong> <span id="totalGames"></span></p>
+                </div>
+                
+                <div id="tab-graph" class="tab-content">
+                    <h3>📈 ELO History</h3>
+                    <div id="graphStats" style="margin-bottom: 20px;">
+                        <p><strong>Current ELO:</strong> <span id="graphElo"></span></p>
+                        <p><strong>ELO Change:</strong> <span id="eloChange"></span></p>
+                        <p><strong>Peak ELO:</strong> <span id="peakElo"></span></p>
+                    </div>
+                    <div class="chart-container" id="chartContainer">
+                        <canvas id="eloChart"></canvas>
+                    </div>
+                    <div id="noGraphData" class="hidden" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                        <p>No match history yet</p>
+                    </div>
+                </div>
+                
+                <div id="tab-history" class="tab-content">
+                    <h3>📜 Recent Matches</h3>
+                    <div id="matchHistory" class="match-list"></div>
+                    <div id="noMatches" class="hidden" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                        <p>No matches played yet</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let eloChart = null;
+        let currentPlayer = null;
+        
+        async function checkAuth() {
+            try {
+                const response = await fetch('/api/session');
+                const data = await response.json();
+                
+                if (!data.loggedIn) {
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                document.getElementById('username').textContent = data.username;
+            } catch (error) {
+                window.location.href = '/login';
+            }
+        }
+        
+        async function loadPlayerProfile() {
+            try {
+                // Get player ID from URL
+                const playerId = window.location.pathname.split('/player/')[1];
+                
+                if (!playerId) {
+                    window.location.href = '/leaderboard';
+                    return;
+                }
+                
+                const response = await fetch(`/api/player/${playerId}`);
+                
+                if (!response.ok) {
+                    throw new Error('Player not found');
+                }
+                
+                currentPlayer = await response.json();
+                
+                document.getElementById('playerTitle').textContent = `👤 ${currentPlayer.name}`;
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('playerContent').classList.remove('hidden');
+                
+                document.getElementById('eloValue').textContent = currentPlayer.elo_rating;
+                document.getElementById('tierValue').textContent = currentPlayer.tier;
+                document.getElementById('winsValue').textContent = currentPlayer.wins;
+                document.getElementById('lossesValue').textContent = currentPlayer.losses;
+                
+                document.getElementById('playerName').textContent = currentPlayer.name;
+                document.getElementById('playerUsername').textContent = currentPlayer.username;
+                document.getElementById('memberSince').textContent = new Date(currentPlayer.created_at).toLocaleDateString('en-AU', {
+                    timeZone: 'Australia/Brisbane',
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                });
+                
+                const totalGames = currentPlayer.wins + currentPlayer.losses;
+                const winRate = totalGames > 0 ? ((currentPlayer.wins / totalGames) * 100).toFixed(1) + '%' : 'N/A';
+                document.getElementById('winRate').textContent = winRate;
+                document.getElementById('totalGames').textContent = totalGames;
+                
+                loadEloHistory();
+                loadMatchHistory();
+                
+            } catch (error) {
+                console.error('Error loading player profile:', error);
+                document.getElementById('loading').textContent = 'Error loading player profile';
+            }
+        }
+        
+        async function loadEloHistory() {
+            try {
+                const response = await fetch(`/api/player-history/${currentPlayer.id}`);
+                const history = await response.json();
+                
+                document.getElementById('graphElo').textContent = currentPlayer.elo_rating;
+                
+                if (history.length === 0) {
+                    document.getElementById('chartContainer').classList.add('hidden');
+                    document.getElementById('noGraphData').classList.remove('hidden');
+                    document.getElementById('eloChange').textContent = '0';
+                    document.getElementById('peakElo').textContent = currentPlayer.elo_rating;
+                    return;
+                }
+                
+                const firstElo = history[0].elo_rating;
+                const currentElo = history[history.length - 1].elo_rating;
+                const change = currentElo - firstElo;
+                const changeText = change >= 0 ? `+${change}` : `${change}`;
+                document.getElementById('eloChange').textContent = changeText;
+                document.getElementById('eloChange').style.color = change >= 0 ? '#10b981' : '#ef4444';
+                
+                const peakElo = Math.max(...history.map(h => h.elo_rating));
+                document.getElementById('peakElo').textContent = peakElo;
+                
+                const labels = history.map((h, index) => {
+                    if (index === 0) return 'Start';
+                    return `Match ${index}`;
+                });
+                
+                const data = history.map(h => h.elo_rating);
+                
+                const ctx = document.getElementById('eloChart').getContext('2d');
+                
+                // Get accent color based on theme
+                const accentColor = getComputedStyle(document.documentElement)
+                    .getPropertyValue('--accent-primary').trim() || '#667eea';
+                
+                eloChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'ELO Rating',
+                            data: data,
+                            borderColor: accentColor,
+                            backgroundColor: accentColor + '33',
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 5,
+                            pointHoverRadius: 7,
+                            pointBackgroundColor: accentColor,
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(26, 26, 46, 0.95)',
+                                titleColor: '#fff',
+                                bodyColor: '#e0e0e0',
+                                borderColor: accentColor,
+                                borderWidth: 1,
+                                callbacks: {
+                                    label: function(context) {
+                                        return `ELO: ${context.parsed.y}`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: false,
+                                ticks: {
+                                    color: '#a0a0a0'
+                                },
+                                grid: {
+                                    color: 'rgba(102, 126, 234, 0.1)'
+                                }
+                            },
+                            x: {
+                                ticks: {
+                                    color: '#a0a0a0'
+                                },
+                                grid: {
+                                    color: 'rgba(102, 126, 234, 0.1)'
+                                }
+                            }
+                        }
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Error loading ELO history:', error);
+            }
+        }
+        
+        function formatDateTimeAEST(dateString) {
+            const date = new Date(dateString);
+            const dateStr = date.toLocaleDateString('en-AU', { 
+                timeZone: 'Australia/Brisbane',
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+            const timeStr = date.toLocaleTimeString('en-AU', { 
+                timeZone: 'Australia/Brisbane',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+            });
+            return `${dateStr} ${timeStr}`;
+        }
+        
+        async function loadMatchHistory() {
+            try {
+                const response = await fetch(`/api/player-matches/${currentPlayer.id}`);
+                const matches = await response.json();
+                
+                if (matches.length === 0) {
+                    document.getElementById('matchHistory').classList.add('hidden');
+                    document.getElementById('noMatches').classList.remove('hidden');
+                    return;
+                }
+                
+                const container = document.getElementById('matchHistory');
+                let html = '';
+                
+                matches.forEach(match => {
+                    const isWinner = match.winner_id === currentPlayer.id;
+                    
+                    html += `
+                        <div class="match-item">
+                            <div class="match-header">
+                                <span>${formatDateTimeAEST(match.timestamp)}</span>
+                            </div>
+                            <div class="match-players">
+                                <div class="match-player">
+                                    <div class="player-icon">${isWinner ? '🏆' : '💔'}</div>
+                                    <div class="player-info">
+                                        <div class="player-name">${match.winner_name}</div>
+                                        <div class="player-score">${match.winner_score}</div>
+                                    </div>
+                                </div>
+                                <div class="vs">VS</div>
+                                <div class="match-player">
+                                    <div class="player-icon">${!isWinner ? '🏆' : '💔'}</div>
+                                    <div class="player-info">
+                                        <div class="player-name">${match.loser_name}</div>
+                                        <div class="player-score">${match.loser_score}</div>
+                                    </div>
+                                </div>
+                                <div class="elo-change ${isWinner ? 'positive' : 'negative'}">
+                                    ${isWinner ? '+' : '-'}${match.elo_change}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                container.innerHTML = html;
+                
+            } catch (error) {
+                console.error('Error loading match history:', error);
+            }
+        }
+        
+        function switchTab(tabName, event) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+        }
+        
+        async function logout() {
+            await fetch('/api/logout', { method: 'POST' });
+            window.location.href = '/';
+        }
+        
+        checkAuth();
+        loadPlayerProfile();
+    </script>
+</body>
+</html>
