@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leaderboard - The Swyftx Slam</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="container">
+        <nav class="nav">
+            <div class="nav-brand">🏓 The Swyftx Slam</div>
+            <div class="nav-links" id="navLinks">
+                <a href="/">Home</a>
+                <a href="/leaderboard">Leaderboard</a>
+            </div>
+        </nav>
+        
+        <div class="card">
+            <h1>🏆 Leaderboard</h1>
+            <p style="color: #666; margin-bottom: 30px;">Top players ranked by ELO rating</p>
+            
+            <div id="loading" class="loading">Loading leaderboard...</div>
+            <div id="leaderboardContent" class="hidden"></div>
+        </div>
+    </div>
+    
+    <script>
+        // Check if logged in
+        async function checkAuth() {
+            try {
+                const response = await fetch('/api/session');
+                const data = await response.json();
+                
+                const navLinks = document.getElementById('navLinks');
+                if (data.loggedIn) {
+                    navLinks.innerHTML += `
+                        <a href="/profile">Profile</a>
+                        <a href="/rank">My Rank</a>
+                        <a href="/pairings">Pairings</a>
+                        <a href="/report">Report Match</a>
+                        <span class="nav-username">${data.username}</span>
+                        <button onclick="logout()">Logout</button>
+                    `;
+                } else {
+                    navLinks.innerHTML += `
+                        <a href="/login">Login</a>
+                        <a href="/register">Register</a>
+                    `;
+                }
+            } catch (error) {
+                console.error('Auth check error:', error);
+            }
+        }
+        
+        async function loadLeaderboard() {
+            try {
+                const response = await fetch('/api/leaderboard');
+                const players = await response.json();
+                
+                document.getElementById('loading').classList.add('hidden');
+                
+                const content = document.getElementById('leaderboardContent');
+                content.classList.remove('hidden');
+                
+                let html = '<table class="leaderboard-table"><thead><tr>';
+                html += '<th>Rank</th><th>Player</th><th>Tier</th><th>ELO</th><th>Wins</th><th>Losses</th><th>Games</th>';
+                html += '</tr></thead><tbody>';
+                
+                players.forEach((player, index) => {
+                    const rank = index + 1;
+                    const rankClass = rank <= 3 ? `rank-${rank}` : '';
+                    const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
+                    
+                    let badgeHtml = '';
+                    if (player.badge) {
+                        if (player.badge.includes('Champion')) {
+                            badgeHtml = `<span class="champion-badge">${player.badge}</span> `;
+                        } else if (player.badge.includes('Dunce')) {
+                            badgeHtml = `<span class="dunce-badge">${player.badge}</span> `;
+                        }
+                    }
+                    
+                    html += `<tr>
+                        <td class="rank ${rankClass}">${medal} ${rank}</td>
+                        <td class="player-name">${badgeHtml}${player.name}</td>
+                        <td><span class="tier-badge">${player.tier}</span></td>
+                        <td class="elo-rating">${player.elo_rating}</td>
+                        <td>${player.wins}</td>
+                        <td>${player.losses}</td>
+                        <td>${player.total_games}</td>
+                    </tr>`;
+                });
+                
+                html += '</tbody></table>';
+                content.innerHTML = html;
+                
+            } catch (error) {
+                console.error('Error loading leaderboard:', error);
+                document.getElementById('loading').textContent = 'Error loading leaderboard';
+            }
+        }
+        
+        async function logout() {
+            await fetch('/api/logout', { method: 'POST' });
+            window.location.href = '/';
+        }
+        
+        checkAuth();
+        loadLeaderboard();
+    </script>
+</body>
+</html>

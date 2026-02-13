@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Profile - The Swyftx Slam</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="container">
+        <nav class="nav">
+            <div class="nav-brand">🏓 The Swyftx Slam</div>
+            <div class="nav-links">
+                <a href="/">Home</a>
+                <a href="/leaderboard">Leaderboard</a>
+                <a href="/profile">Profile</a>
+                <a href="/rank">My Rank</a>
+                <a href="/pairings">Pairings</a>
+                <a href="/report">Report Match</a>
+                <span class="nav-username" id="username"></span>
+                <button onclick="logout()">Logout</button>
+            </div>
+        </nav>
+        
+        <div class="card">
+            <h1>👤 My Profile</h1>
+            
+            <div id="loading" class="loading">Loading profile...</div>
+            <div id="profileContent" class="hidden"></div>
+        </div>
+    </div>
+    
+    <script>
+        async function loadProfile() {
+            try {
+                const response = await fetch('/api/profile');
+                
+                if (!response.ok) {
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                const player = await response.json();
+                
+                document.getElementById('username').textContent = player.username;
+                document.getElementById('loading').classList.add('hidden');
+                
+                const content = document.getElementById('profileContent');
+                content.classList.remove('hidden');
+                
+                content.innerHTML = `
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value">${player.elo_rating}</div>
+                            <div class="stat-label">ELO Rating</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${player.tier}</div>
+                            <div class="stat-label">Tier</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${player.wins}</div>
+                            <div class="stat-label">Wins</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${player.losses}</div>
+                            <div class="stat-label">Losses</div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 30px;">
+                        <h3>Account Information</h3>
+                        <p><strong>Name:</strong> ${player.name}</p>
+                        <p><strong>Username:</strong> ${player.username}</p>
+                        <p><strong>Member since:</strong> ${new Date(player.created_at).toLocaleDateString()}</p>
+                    </div>
+                    
+                    <div style="margin-top: 30px;">
+                        <a href="/rank" class="btn">View ELO History →</a>
+                    </div>
+                `;
+                
+            } catch (error) {
+                console.error('Error loading profile:', error);
+                document.getElementById('loading').textContent = 'Error loading profile';
+            }
+        }
+        
+        async function logout() {
+            await fetch('/api/logout', { method: 'POST' });
+            window.location.href = '/';
+        }
+        
+        loadProfile();
+    </script>
+</body>
+</html>

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Match Pairings - The Swyftx Slam</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="container">
+        <nav class="nav">
+            <div class="nav-brand">🏓 The Swyftx Slam</div>
+            <div class="nav-links">
+                <a href="/">Home</a>
+                <a href="/leaderboard">Leaderboard</a>
+                <a href="/profile">Profile</a>
+                <a href="/rank">My Rank</a>
+                <a href="/pairings">Pairings</a>
+                <a href="/report">Report Match</a>
+                <span class="nav-username" id="username"></span>
+                <button onclick="logout()">Logout</button>
+            </div>
+        </nav>
+        
+        <div class="card">
+            <h1>🎯 Current Match Pairings</h1>
+            <p style="color: #666; margin-bottom: 30px;">Your scheduled matches for this round</p>
+            
+            <div id="loading" class="loading">Loading pairings...</div>
+            <div id="pairingsContent" class="hidden"></div>
+        </div>
+    </div>
+    
+    <script>
+        async function checkAuth() {
+            try {
+                const response = await fetch('/api/session');
+                const data = await response.json();
+                
+                if (!data.loggedIn) {
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                document.getElementById('username').textContent = data.username;
+            } catch (error) {
+                window.location.href = '/login';
+            }
+        }
+        
+        async function loadPairings() {
+            try {
+                const response = await fetch('/api/pairings');
+                const data = await response.json();
+                
+                document.getElementById('loading').classList.add('hidden');
+                const content = document.getElementById('pairingsContent');
+                content.classList.remove('hidden');
+                
+                if (!data.pairings || data.pairings.length === 0) {
+                    content.innerHTML = `
+                        <div class="message message-info">
+                            <p>${data.message || 'No active pairings. Check back on Wednesday or Friday at 9 AM!'}</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let html = '';
+                
+                if (data.round) {
+                    html += `
+                        <div class="message message-info" style="margin-bottom: 20px;">
+                            <strong>Round ${data.round.id}</strong> - Started: ${new Date(data.round.week_start).toLocaleDateString()}
+                        </div>
+                    `;
+                }
+                
+                data.pairings.forEach((pairing, index) => {
+                    html += `
+                        <div class="pairing-card">
+                            <h3 style="margin-bottom: 15px; color: #667eea;">Match ${index + 1}</h3>
+                            <div class="pairing-players">
+                                <div class="pairing-player">
+                                    <div style="font-size: 1.3em; font-weight: bold; margin-bottom: 5px;">
+                                        ${pairing.player1_name}
+                                    </div>
+                                    <div style="color: #667eea; font-weight: 600;">
+                                        ${pairing.player1_elo} ELO
+                                    </div>
+                                </div>
+                                <div class="vs">VS</div>
+                                <div class="pairing-player">
+                                    <div style="font-size: 1.3em; font-weight: bold; margin-bottom: 5px;">
+                                        ${pairing.player2_name}
+                                    </div>
+                                    <div style="color: #667eea; font-weight: 600;">
+                                        ${pairing.player2_elo} ELO
+                                    </div>
+                                </div>
+                            </div>
+                            ${pairing.completed ? 
+                                '<div style="text-align: center; color: #28a745; font-weight: 600;">✅ Completed</div>' : 
+                                '<div style="text-align: center; color: #666;">⏳ Pending</div>'
+                            }
+                        </div>
+                    `;
+                });
+                
+                html += `
+                    <div style="text-align: center; margin-top: 30px;">
+                        <a href="/report" class="btn">Report Match Result →</a>
+                    </div>
+                `;
+                
+                content.innerHTML = html;
+                
+            } catch (error) {
+                console.error('Error loading pairings:', error);
+                document.getElementById('loading').textContent = 'Error loading pairings';
+            }
+        }
+        
+        async function logout() {
+            await fetch('/api/logout', { method: 'POST' });
+            window.location.href = '/';
+        }
+        
+        checkAuth();
+        loadPairings();
+    </script>
+</body>
+</html>

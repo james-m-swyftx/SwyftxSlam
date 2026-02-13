@@ -42,9 +42,7 @@ function calculateNewRatings(winnerRating, loserRating) {
  * @returns {string} Tier name with emoji
  */
 function getTier(elo) {
-    if (elo >= 1550) return 'G O D'
-    if (elo >= 1550) return '💎 Diamond';
-    if (elo >= 1450) return 'Platnium';
+    if (elo >= 1450) return '💎 Diamond';
     if (elo >= 1350) return '🥇 Gold';
     if (elo >= 1250) return '🥈 Silver';
     if (elo >= 1150) return '🥉 Bronze';
