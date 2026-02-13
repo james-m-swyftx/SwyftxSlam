@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feed - The Swyftx Slam</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/theme.js"></script>
+</head>
+<body>
+    <div class="container">
+        <nav class="nav">
+            <div class="nav-brand" onclick="triggerEasterEgg()">🏓 The Swyftx Slam</div>
+            <div class="nav-links">
+                <a href="/feed">Feed</a>
+                <a href="/leaderboard">Leaderboard</a>
+                <a href="/profile">Profile</a>
+                <a href="/pairings">Pairings</a>
+                <a href="/report">Report Match</a>
+                <button id="themeToggle" class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">☀️</button>
+                <span class="nav-username" id="username"></span>
+                <button onclick="logout()">Logout</button>
+            </div>
+        </nav>
+        
+        <div class="card">
+            <h1>📰 Match Feed</h1>
+            <p style="color: #a0a0a0; margin-bottom: 30px;">All matches from the tournament</p>
+            
+            <div id="loading" class="loading">Loading matches...</div>
+            
+            <div id="feedContent" class="hidden">
+                <div id="matchFeed" class="match-list"></div>
+                <div id="noMatches" class="hidden" style="text-align: center; padding: 60px; color: #a0a0a0;">
+                    <div style="font-size: 3em; margin-bottom: 20px;">🏓</div>
+                    <h3>No matches yet</h3>
+                    <p>Matches will appear here once the tournament starts!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        async function loadFeed() {
+            try {
+                const sessionResponse = await fetch('/api/session');
+                if (!sessionResponse.ok) {
+                    window.location.href = '/login';
+                    return;
+                }
+                
+                const sessionData = await sessionResponse.json();
+                document.getElementById('username').textContent = sessionData.username;
+                
+                const response = await fetch('/api/match-history?all=true');
+                const matches = await response.json();
+                
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('feedContent').classList.remove('hidden');
+                
+                if (matches.length === 0) {
+                    document.getElementById('matchFeed').classList.add('hidden');
+                    document.getElementById('noMatches').classList.remove('hidden');
+                    return;
+                }
+                
+                const container = document.getElementById('matchFeed');
+                let html = '';
+                
+                matches.forEach(match => {
+                    const date = new Date(match.timestamp);
+                    const isRecent = (Date.now() - date.getTime()) < 24 * 60 * 60 * 1000;
+                    
+                    html += `
+                        <div class="match-item ${isRecent ? 'recent-match' : ''}">
+                            <div class="match-header">
+                                <span style="font-weight: 600;">${date.toLocaleDateString()} ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                <span style="color: #667eea;">Round ${match.round_id || 1}</span>
+                            </div>
+                            <div class="match-players">
+                                <div class="match-player">
+                                    <div class="player-icon">🏆</div>
+                                    <div class="player-info">
+                                        <div class="player-name">${match.winner_name}</div>
+                                        <div class="player-score">${match.winner_score}</div>
+                                    </div>
+                                </div>
+                                <div class="vs">VS</div>
+                                <div class="match-player">
+                                    <div class="player-icon">💔</div>
+                                    <div class="player-info">
+                                        <div class="player-name">${match.loser_name}</div>
+                                        <div class="player-score">${match.loser_score}</div>
+                                    </div>
+                                </div>
+                                <div class="elo-change positive">
+                                    ±${match.elo_change}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                container.innerHTML = html;
+                
+            } catch (error) {
+                console.error('Error loading feed:', error);
+                document.getElementById('loading').textContent = 'Error loading feed';
+            }
+        }
+        
+        async function logout() {
+            await fetch('/api/logout', { method: 'POST' });
+            window.location.href = '/';
+        }
+        
+        loadFeed();
+    </script>
+</body>
+</html>

@@ -5,18 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Match Pairings - The Swyftx Slam</title>
     <link rel="stylesheet" href="/styles.css">
+    <script src="/theme.js"></script>
 </head>
 <body>
     <div class="container">
         <nav class="nav">
-            <div class="nav-brand">🏓 The Swyftx Slam</div>
+            <div class="nav-brand" onclick="triggerEasterEgg()">🏓 The Swyftx Slam</div>
             <div class="nav-links">
-                <a href="/">Home</a>
+                <a href="/feed">Feed</a>
                 <a href="/leaderboard">Leaderboard</a>
                 <a href="/profile">Profile</a>
-                <a href="/rank">My Rank</a>
                 <a href="/pairings">Pairings</a>
                 <a href="/report">Report Match</a>
+                <button id="themeToggle" class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">☀️</button>
                 <span class="nav-username" id="username"></span>
                 <button onclick="logout()">Logout</button>
             </div>
@@ -77,6 +78,27 @@
                 }
                 
                 data.pairings.forEach((pairing, index) => {
+                    let resultHtml = '';
+                    if (pairing.completed && pairing.winner_id) {
+                        const player1Won = pairing.winner_id === pairing.player1_id;
+                        const player1Score = player1Won ? pairing.winner_score : pairing.loser_score;
+                        const player2Score = player1Won ? pairing.loser_score : pairing.winner_score;
+                        
+                        resultHtml = `
+                            <div style="text-align: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid #e0e0e0;">
+                                <div style="color: #28a745; font-weight: 600; margin-bottom: 8px;">✅ Final Score</div>
+                                <div style="font-size: 1.2em; font-weight: bold; color: #333;">
+                                    ${player1Score} - ${player2Score}
+                                </div>
+                                <div style="margin-top: 5px; color: #666;">
+                                    Winner: ${player1Won ? pairing.player1_name : pairing.player2_name}
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        resultHtml = '<div style="text-align: center; color: #666; margin-top: 10px;">⏳ Pending</div>';
+                    }
+                    
                     html += `
                         <div class="pairing-card">
                             <h3 style="margin-bottom: 15px; color: #667eea;">Match ${index + 1}</h3>
@@ -99,10 +121,7 @@
                                     </div>
                                 </div>
                             </div>
-                            ${pairing.completed ? 
-                                '<div style="text-align: center; color: #28a745; font-weight: 600;">✅ Completed</div>' : 
-                                '<div style="text-align: center; color: #666;">⏳ Pending</div>'
-                            }
+                            ${resultHtml}
                         </div>
                     `;
                 });

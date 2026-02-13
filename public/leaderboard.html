@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Leaderboard - The Swyftx Slam</title>
     <link rel="stylesheet" href="/styles.css">
+    <script src="/theme.js"></script>
 </head>
 <body>
     <div class="container">
         <nav class="nav">
-            <div class="nav-brand">🏓 The Swyftx Slam</div>
+            <div class="nav-brand" onclick="triggerEasterEgg()">🏓 The Swyftx Slam</div>
             <div class="nav-links" id="navLinks">
-                <a href="/">Home</a>
-                <a href="/leaderboard">Leaderboard</a>
+                <!-- Navigation will be populated by JavaScript -->
             </div>
         </nav>
         
@@ -33,21 +33,32 @@
                 const data = await response.json();
                 
                 const navLinks = document.getElementById('navLinks');
+                
+                // Build the nav links HTML
+                let navHTML = '<a href="/leaderboard">Leaderboard</a>';
+                
                 if (data.loggedIn) {
-                    navLinks.innerHTML += `
+                    navHTML += `
+                        <a href="/feed">Feed</a>
                         <a href="/profile">Profile</a>
-                        <a href="/rank">My Rank</a>
                         <a href="/pairings">Pairings</a>
                         <a href="/report">Report Match</a>
+                        <button id="themeToggle" class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">☀️</button>
                         <span class="nav-username">${data.username}</span>
                         <button onclick="logout()">Logout</button>
                     `;
                 } else {
-                    navLinks.innerHTML += `
+                    navHTML += `
                         <a href="/login">Login</a>
                         <a href="/register">Register</a>
+                        <button id="themeToggle" class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">☀️</button>
                     `;
                 }
+                
+                navLinks.innerHTML = navHTML;
+                
+                // Update theme icon after nav is rebuilt
+                updateThemeIcon();
             } catch (error) {
                 console.error('Auth check error:', error);
             }

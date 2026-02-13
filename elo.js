@@ -1,9 +1,4 @@
-/**
- * ELO Rating System Utilities
- * K-factor = 32 (standard for competitive games)
- */
-
-const K_FACTOR = 32;
+const K_FACTOR = 60;
 
 /**
  * Calculate expected score for a player
@@ -42,10 +37,12 @@ function calculateNewRatings(winnerRating, loserRating) {
  * @returns {string} Tier name with emoji
  */
 function getTier(elo) {
-    if (elo >= 1450) return '💎 Diamond';
-    if (elo >= 1350) return '🥇 Gold';
-    if (elo >= 1250) return '🥈 Silver';
+    if (elo >= 1400) return '💼 Do some work';
+    if (elo >= 1300) return '💎 Diamond';
+    if (elo >= 1250) return '🥇 Gold';
+    if (elo >= 1200) return '🥈 Silver';
     if (elo >= 1150) return '🥉 Bronze';
+    if (elo >= 1075) return '📦 Cardboard';
     return '⚪ Iron';
 }
 

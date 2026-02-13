@@ -88,7 +88,7 @@ app.post('/api/register', async (req, res) => {
             `).run(username, passwordHash);
             
             const userId = userResult.lastInsertRowid;
-            const startingElo = 1200;
+            const startingElo = 1250;
             
             db.prepare(`
                 INSERT INTO players (user_id, name, elo_rating, tier)
@@ -244,6 +244,60 @@ app.get('/api/player-history/:playerId', requireAuth, (req, res) => {
 });
 
 /**
+ * GET /api/match-history - Get match history for current user or all
+ */
+app.get('/api/match-history', requireAuth, (req, res) => {
+    try {
+        const userId = req.session.userId;
+        const showAll = req.query.all === 'true';
+        
+        let matches;
+        
+        if (showAll) {
+            // Get all matches
+            matches = db.prepare(`
+                SELECT m.*,
+                       w.name as winner_name, w.elo_rating as winner_elo,
+                       l.name as loser_name, l.elo_rating as loser_elo,
+                       m.timestamp
+                FROM matches m
+                JOIN players w ON m.winner_id = w.id
+                JOIN players l ON m.loser_id = l.id
+                ORDER BY m.timestamp DESC
+                LIMIT 50
+            `).all();
+        } else {
+            // Get matches for current user's player
+            const player = db.prepare(`
+                SELECT id FROM players WHERE user_id = ?
+            `).get(userId);
+            
+            if (!player) {
+                return res.json([]);
+            }
+            
+            matches = db.prepare(`
+                SELECT m.*,
+                       w.name as winner_name, w.elo_rating as winner_elo,
+                       l.name as loser_name, l.elo_rating as loser_elo,
+                       m.timestamp
+                FROM matches m
+                JOIN players w ON m.winner_id = w.id
+                JOIN players l ON m.loser_id = l.id
+                WHERE m.winner_id = ? OR m.loser_id = ?
+                ORDER BY m.timestamp DESC
+                LIMIT 30
+            `).all(player.id, player.id);
+        }
+        
+        res.json(matches);
+    } catch (error) {
+        console.error('Match history error:', error);
+        res.status(500).json({ error: 'Failed to load match history' });
+    }
+});
+
+/**
  * POST /api/report-match - Report match result
  */
 app.post('/api/report-match', requireAuth, async (req, res) => {
@@ -256,6 +310,18 @@ app.post('/api/report-match', requireAuth, async (req, res) => {
         
         if (winnerId === loserId) {
             return res.status(400).json({ error: 'Winner and loser cannot be the same' });
+        }
+        
+        // Get current user's player ID
+        const currentPlayer = db.prepare('SELECT id FROM players WHERE user_id = ?').get(req.session.userId);
+        
+        if (!currentPlayer) {
+            return res.status(404).json({ error: 'Player profile not found' });
+        }
+        
+        // Verify that the current user is one of the participants
+        if (currentPlayer.id !== winnerId && currentPlayer.id !== loserId) {
+            return res.status(403).json({ error: 'You can only report matches you participated in' });
         }
         
         // Get player data
@@ -306,6 +372,14 @@ app.post('/api/report-match', requireAuth, async (req, res) => {
                 VALUES (?, ?, ?)
             `).run(loserId, loserNewRating, matchId);
             
+            // Update pairing if it exists in current round
+            db.prepare(`
+                UPDATE pairings
+                SET completed = 1, match_id = ?
+                WHERE round_id = (SELECT id FROM rounds WHERE status = 'active' ORDER BY created_at DESC LIMIT 1)
+                AND ((player1_id = ? AND player2_id = ?) OR (player1_id = ? AND player2_id = ?))
+            `).run(matchId, winnerId, loserId, loserId, winnerId);
+            
             return matchId;
         });
         
@@ -348,10 +422,12 @@ app.get('/api/pairings', requireAuth, (req, res) => {
         const pairings = db.prepare(`
             SELECT p.*,
                    p1.name as player1_name, p1.elo_rating as player1_elo,
-                   p2.name as player2_name, p2.elo_rating as player2_elo
+                   p2.name as player2_name, p2.elo_rating as player2_elo,
+                   m.winner_id, m.loser_id, m.winner_score, m.loser_score
             FROM pairings p
             JOIN players p1 ON p.player1_id = p1.id
             JOIN players p2 ON p.player2_id = p2.id
+            LEFT JOIN matches m ON p.match_id = m.id
             WHERE p.round_id = ?
             ORDER BY p1.elo_rating DESC
         `).all(currentRound.id);
@@ -440,10 +516,32 @@ cron.schedule('0 9 * * 5', generateWeeklyPairings, {
 
 console.log('⏰ Cron jobs scheduled: Wednesday & Friday at 9 AM');
 
+// ==================== ADMIN/TESTING ENDPOINTS ====================
+
+/**
+ * POST /api/force-pairings - Manually trigger pairing generation (for testing)
+ */
+app.post('/api/force-pairings', requireAuth, (req, res) => {
+    try {
+        generateWeeklyPairings();
+        res.json({ 
+            success: true, 
+            message: 'Pairings generated successfully! Check /pairings to see them.' 
+        });
+    } catch (error) {
+        console.error('Force pairings error:', error);
+        res.status(500).json({ error: 'Failed to generate pairings' });
+    }
+});
+
 // ==================== WEB PAGE ROUTES ====================
 
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    if (req.session.userId) {
+        res.redirect('/feed');
+    } else {
+        res.redirect('/login');
+    }
 });
 
 app.get('/register', (req, res) => {
@@ -454,16 +552,16 @@ app.get('/login', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
+app.get('/feed', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'feed.html'));
+});
+
 app.get('/profile', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'profile.html'));
 });
 
 app.get('/leaderboard', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'leaderboard.html'));
-});
-
-app.get('/rank', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'rank.html'));
 });
 
 app.get('/report', (req, res) => {

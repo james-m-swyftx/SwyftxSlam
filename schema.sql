@@ -14,10 +14,10 @@ CREATE TABLE IF NOT EXISTS players (
     user_id INTEGER UNIQUE NOT NULL,
     slack_id TEXT UNIQUE,
     name TEXT NOT NULL,
-    elo_rating INTEGER DEFAULT 1200,
+    elo_rating INTEGER DEFAULT 1250,
     wins INTEGER DEFAULT 0,
     losses INTEGER DEFAULT 0,
-    tier TEXT DEFAULT 'Bronze',
+    tier TEXT DEFAULT '🥈 Silver',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)

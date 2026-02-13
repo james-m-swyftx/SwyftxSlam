@@ -5,18 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Report Match - The Swyftx Slam</title>
     <link rel="stylesheet" href="/styles.css">
+    <script src="/theme.js"></script>
 </head>
 <body>
     <div class="container">
         <nav class="nav">
-            <div class="nav-brand">🏓 The Swyftx Slam</div>
+            <div class="nav-brand" onclick="triggerEasterEgg()">🏓 The Swyftx Slam</div>
             <div class="nav-links">
-                <a href="/">Home</a>
+                <a href="/feed">Feed</a>
                 <a href="/leaderboard">Leaderboard</a>
                 <a href="/profile">Profile</a>
-                <a href="/rank">My Rank</a>
                 <a href="/pairings">Pairings</a>
                 <a href="/report">Report Match</a>
+                <button id="themeToggle" class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">☀️</button>
                 <span class="nav-username" id="username"></span>
                 <button onclick="logout()">Logout</button>
             </div>

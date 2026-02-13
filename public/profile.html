@@ -5,18 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Profile - The Swyftx Slam</title>
     <link rel="stylesheet" href="/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/theme.js"></script>
 </head>
 <body>
     <div class="container">
         <nav class="nav">
-            <div class="nav-brand">🏓 The Swyftx Slam</div>
+            <div class="nav-brand" onclick="triggerEasterEgg()">🏓 The Swyftx Slam</div>
             <div class="nav-links">
-                <a href="/">Home</a>
+                <a href="/feed">Feed</a>
                 <a href="/leaderboard">Leaderboard</a>
                 <a href="/profile">Profile</a>
-                <a href="/rank">My Rank</a>
                 <a href="/pairings">Pairings</a>
                 <a href="/report">Report Match</a>
+                <button id="themeToggle" class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">☀️</button>
                 <span class="nav-username" id="username"></span>
                 <button onclick="logout()">Logout</button>
             </div>
@@ -26,72 +28,67 @@
             <h1>👤 My Profile</h1>
             
             <div id="loading" class="loading">Loading profile...</div>
-            <div id="profileContent" class="hidden"></div>
+            
+            <div id="profileContent" class="hidden">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="eloValue">-</div>
+                        <div class="stat-label">ELO Rating</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="tierValue">-</div>
+                        <div class="stat-label">Tier</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="winsValue">-</div>
+                        <div class="stat-label">Wins</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="lossesValue">-</div>
+                        <div class="stat-label">Losses</div>
+                    </div>
+                </div>
+                
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="switchTab('info', event)">Info</button>
+                    <button class="tab-btn" onclick="switchTab('graph', event)">ELO Graph</button>
+                    <button class="tab-btn" onclick="switchTab('history', event)">Match History</button>
+                </div>
+                
+                <div id="tab-info" class="tab-content active">
+                    <h3>Account Information</h3>
+                    <p><strong>Name:</strong> <span id="playerName"></span></p>
+                    <p><strong>Username:</strong> <span id="playerUsername"></span></p>
+                    <p><strong>Member since:</strong> <span id="memberSince"></span></p>
+                    <p style="margin-top: 20px;"><strong>Win Rate:</strong> <span id="winRate"></span></p>
+                </div>
+                
+                <div id="tab-graph" class="tab-content">
+                    <h3>📈 ELO History</h3>
+                    <div id="graphStats" style="margin-bottom: 20px;">
+                        <p><strong>Current ELO:</strong> <span id="graphElo"></span></p>
+                        <p><strong>ELO Change:</strong> <span id="eloChange"></span></p>
+                        <p><strong>Peak ELO:</strong> <span id="peakElo"></span></p>
+                    </div>
+                    <div class="chart-container" id="chartContainer">
+                        <canvas id="eloChart"></canvas>
+                    </div>
+                    <div id="noGraphData" class="hidden" style="text-align: center; padding: 40px; color: #a0a0a0;">
+                        <p>No match history yet. Play some matches to see your ELO progression!</p>
+                    </div>
+                </div>
+                
+                <div id="tab-history" class="tab-content">
+                    <h3>📜 Recent Matches</h3>
+                    <div id="matchHistory" class="match-list"></div>
+                    <div id="noMatches" class="hidden" style="text-align: center; padding: 40px; color: #a0a0a0;">
+                        <p>No matches played yet</p>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
     
-    <script>
-        async function loadProfile() {
-            try {
-                const response = await fetch('/api/profile');
-                
-                if (!response.ok) {
-                    window.location.href = '/login';
-                    return;
-                }
-                
-                const player = await response.json();
-                
-                document.getElementById('username').textContent = player.username;
-                document.getElementById('loading').classList.add('hidden');
-                
-                const content = document.getElementById('profileContent');
-                content.classList.remove('hidden');
-                
-                content.innerHTML = `
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="stat-value">${player.elo_rating}</div>
-                            <div class="stat-label">ELO Rating</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">${player.tier}</div>
-                            <div class="stat-label">Tier</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">${player.wins}</div>
-                            <div class="stat-label">Wins</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">${player.losses}</div>
-                            <div class="stat-label">Losses</div>
-                        </div>
-                    </div>
-                    
-                    <div style="margin-top: 30px;">
-                        <h3>Account Information</h3>
-                        <p><strong>Name:</strong> ${player.name}</p>
-                        <p><strong>Username:</strong> ${player.username}</p>
-                        <p><strong>Member since:</strong> ${new Date(player.created_at).toLocaleDateString()}</p>
-                    </div>
-                    
-                    <div style="margin-top: 30px;">
-                        <a href="/rank" class="btn">View ELO History →</a>
-                    </div>
-                `;
-                
-            } catch (error) {
-                console.error('Error loading profile:', error);
-                document.getElementById('loading').textContent = 'Error loading profile';
-            }
-        }
-        
-        async function logout() {
-            await fetch('/api/logout', { method: 'POST' });
-            window.location.href = '/';
-        }
-        
-        loadProfile();
-    </script>
+    <script src="/profile.js"></script>
 </body>
 </html>
