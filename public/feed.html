@@ -46,6 +46,7 @@
                 <a href="/profile">Profile</a>
                 <a href="/pairings">Pairings</a>
                 <a href="/report">Report Match</a>
+                <span id="adminLink"></span>
                 <button id="themeToggle" class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">☀️</button>
                 <span class="nav-username" id="username"></span>
                 <button onclick="logout()">Logout</button>
@@ -80,6 +81,11 @@
                 
                 const sessionData = await sessionResponse.json();
                 document.getElementById('username').textContent = sessionData.username;
+                
+                // Add admin link if user is admin
+                if (sessionData.isAdmin) {
+                    document.getElementById('adminLink').innerHTML = '<a href="/admin">Admin</a>';
+                }
                 
                 const response = await fetch('/api/match-history?all=true');
                 const matches = await response.json();

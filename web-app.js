@@ -11,7 +11,7 @@ const Database = require('better-sqlite3');
 const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
-const { calculateNewRatings, getTier, generateSwissPairings, generateTrashTalk } = require('./elo');
+const { calculateNewRatings, getTier, generateSwissPairings, generateTrashTalk, getGravatarUrl } = require('./elo');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -46,11 +46,82 @@ app.use(session({
 /**
  * Initialize database with schema
  */
-function initDatabase() {
+async function initDatabase() {
     console.log('📊 Initializing database...');
     const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
     db.exec(schema);
+    
+    // Migration: Add new columns if they don't exist
+    try {
+        db.prepare("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0").run();
+        console.log('✅ Added is_admin column to users table');
+    } catch (e) {
+        // Column already exists
+    }
+    
+    try {
+        db.prepare("ALTER TABLE players ADD COLUMN email TEXT").run();
+        console.log('✅ Added email column to players table');
+    } catch (e) {
+        // Column already exists
+    }
+    
+    try {
+        db.prepare("ALTER TABLE players ADD COLUMN avatar_url TEXT").run();
+        console.log('✅ Added avatar_url column to players table');
+    } catch (e) {
+        // Column already exists
+    }
+    
+    // Create or ensure default admin account exists
+    await ensureDefaultAdmin();
+    
     console.log('✅ Database initialized!');
+}
+
+/**
+ * Ensure default admin account exists
+ */
+async function ensureDefaultAdmin() {
+    const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+    
+    try {
+        // Check if admin account already exists
+        const existingAdmin = db.prepare('SELECT * FROM users WHERE username = ?').get(ADMIN_USERNAME);
+        
+        if (existingAdmin) {
+            // Ensure user is marked as admin
+            db.prepare('UPDATE users SET is_admin = 1 WHERE username = ?').run(ADMIN_USERNAME);
+            
+            // Remove player profile if it exists (admin should not be a player)
+            db.prepare('DELETE FROM players WHERE user_id = ?').run(existingAdmin.id);
+            
+            console.log(`👑 Default admin account "${ADMIN_USERNAME}" verified (not a player)`);
+        } else {
+            // Create new admin account (user only, no player profile)
+            const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+            
+            db.prepare(`
+                INSERT INTO users (username, password_hash, is_admin)
+                VALUES (?, ?, 1)
+            `).run(ADMIN_USERNAME, passwordHash);
+            
+            console.log(`🎉 Created default admin account: "${ADMIN_USERNAME}" / "${ADMIN_PASSWORD}" (admin only, not a player)`);
+        }
+    } catch (error) {
+        console.error('Error creating default admin:', error);
+    }
+    
+    // Also promote first user if no other admins exist (backward compatibility)
+    const adminCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE is_admin = 1').get();
+    if (adminCount.count === 0) {
+        const firstUser = db.prepare('SELECT id FROM users ORDER BY id ASC LIMIT 1').get();
+        if (firstUser) {
+            db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run(firstUser.id);
+            console.log('👑 First user promoted to admin');
+        }
+    }
 }
 
 /**
@@ -62,6 +133,23 @@ function requireAuth(req, res, next) {
     } else {
         res.status(401).json({ error: 'Authentication required' });
     }
+}
+
+/**
+ * Admin authentication middleware
+ */
+function requireAdmin(req, res, next) {
+    if (!req.session.userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+    }
+    
+    const user = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(req.session.userId);
+    
+    if (!user || !user.is_admin) {
+        return res.status(403).json({ error: 'Admin access required' });
+    }
+    
+    next();
 }
 
 // ==================== AUTH API ROUTES ====================
@@ -158,10 +246,12 @@ app.post('/api/logout', (req, res) => {
  */
 app.get('/api/session', (req, res) => {
     if (req.session.userId) {
+        const user = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(req.session.userId);
         res.json({ 
             loggedIn: true, 
             userId: req.session.userId,
-            username: req.session.username 
+            username: req.session.username,
+            isAdmin: user ? user.is_admin : false
         });
     } else {
         res.json({ loggedIn: false });
@@ -203,21 +293,71 @@ app.get('/api/leaderboard', (req, res) => {
  */
 app.get('/api/profile', requireAuth, (req, res) => {
     try {
+        const user = db.prepare('SELECT username, is_admin FROM users WHERE id = ?').get(req.session.userId);
+        
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
         const player = db.prepare(`
-            SELECT p.*, u.username
+            SELECT p.*, u.username, u.is_admin
             FROM players p
             JOIN users u ON p.user_id = u.id
             WHERE u.id = ?
         `).get(req.session.userId);
         
+        // If user is admin-only (no player profile), return limited data
         if (!player) {
-            return res.status(404).json({ error: 'Player not found' });
+            return res.json({
+                username: user.username,
+                is_admin: user.is_admin,
+                isAdminOnly: true,
+                message: 'Admin account - not a player'
+            });
+        }
+        
+        // Update avatar_url if email exists but avatar_url is missing
+        if (player.email && !player.avatar_url) {
+            const avatarUrl = getGravatarUrl(player.email);
+            db.prepare('UPDATE players SET avatar_url = ? WHERE id = ?').run(avatarUrl, player.id);
+            player.avatar_url = avatarUrl;
         }
         
         res.json(player);
     } catch (error) {
         console.error('Profile error:', error);
         res.status(500).json({ error: 'Failed to load profile' });
+    }
+});
+
+/**
+ * POST /api/update-profile - Update user profile
+ */
+app.post('/api/update-profile', requireAuth, (req, res) => {
+    try {
+        const { email } = req.body;
+        const player = db.prepare('SELECT id FROM players WHERE user_id = ?').get(req.session.userId);
+        
+        if (!player) {
+            return res.status(404).json({ error: 'Player not found' });
+        }
+        
+        const avatarUrl = getGravatarUrl(email);
+        
+        db.prepare(`
+            UPDATE players 
+            SET email = ?, avatar_url = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        `).run(email, avatarUrl, player.id);
+        
+        res.json({ 
+            success: true, 
+            message: 'Profile updated',
+            avatar_url: avatarUrl
+        });
+    } catch (error) {
+        console.error('Update profile error:', error);
+        res.status(500).json({ error: 'Failed to update profile' });
     }
 });
 
@@ -610,6 +750,315 @@ console.log('⏰ Cron jobs scheduled: Wednesday & Friday at 9 AM');
 // ==================== ADMIN/TESTING ENDPOINTS ====================
 
 /**
+ * GET /api/admin/users - Get all users (admin only)
+ */
+app.get('/api/admin/users', requireAdmin, (req, res) => {
+    try {
+        const users = db.prepare(`
+            SELECT u.id, u.username, u.is_admin, u.created_at,
+                   p.id as player_id, p.name, p.elo_rating, p.wins, p.losses
+            FROM users u
+            LEFT JOIN players p ON u.id = p.user_id
+            ORDER BY u.created_at DESC
+        `).all();
+        
+        res.json(users);
+    } catch (error) {
+        console.error('Get users error:', error);
+        res.status(500).json({ error: 'Failed to get users' });
+    }
+});
+
+/**
+ * POST /api/admin/toggle-admin - Toggle admin status (admin only)
+ */
+app.post('/api/admin/toggle-admin', requireAdmin, (req, res) => {
+    try {
+        const { userId } = req.body;
+        
+        if (userId === req.session.userId) {
+            return res.status(400).json({ error: 'Cannot modify your own admin status' });
+        }
+        
+        const user = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(userId);
+        
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        const newStatus = user.is_admin ? 0 : 1;
+        db.prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(newStatus, userId);
+        
+        res.json({ 
+            success: true, 
+            message: newStatus ? 'User promoted to admin' : 'User demoted from admin',
+            is_admin: newStatus
+        });
+    } catch (error) {
+        console.error('Toggle admin error:', error);
+        res.status(500).json({ error: 'Failed to toggle admin status' });
+    }
+});
+
+/**
+ * GET /api/admin/matches - Get all matches with pagination (admin only)
+ */
+app.get('/api/admin/matches', requireAdmin, (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = 50;
+        const offset = (page - 1) * limit;
+        
+        const matches = db.prepare(`
+            SELECT m.*,
+                   w.name as winner_name, w.elo_rating as winner_elo,
+                   l.name as loser_name, l.elo_rating as loser_elo,
+                   m.timestamp
+            FROM matches m
+            JOIN players w ON m.winner_id = w.id
+            JOIN players l ON m.loser_id = l.id
+            ORDER BY m.timestamp DESC
+            LIMIT ? OFFSET ?
+        `).all(limit, offset);
+        
+        const total = db.prepare('SELECT COUNT(*) as count FROM matches').get().count;
+        
+        res.json({ matches, total, page, limit });
+    } catch (error) {
+        console.error('Get matches error:', error);
+        res.status(500).json({ error: 'Failed to get matches' });
+    }
+});
+
+/**
+ * DELETE /api/admin/match/:matchId - Delete a match and recalculate ELO (admin only)
+ */
+app.delete('/api/admin/match/:matchId', requireAdmin, (req, res) => {
+    try {
+        const matchId = parseInt(req.params.matchId);
+        
+        const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+        
+        if (!match) {
+            return res.status(404).json({ error: 'Match not found' });
+        }
+        
+        // Delete in transaction
+        const deleteTransaction = db.transaction(() => {
+            // Get subsequent matches for both players to recalculate
+            const subsequentMatches = db.prepare(`
+                SELECT * FROM matches 
+                WHERE (winner_id = ? OR loser_id = ? OR winner_id = ? OR loser_id = ?)
+                AND timestamp >= ?
+                ORDER BY timestamp ASC
+            `).all(match.winner_id, match.winner_id, match.loser_id, match.loser_id, match.timestamp);
+            
+            // Delete ELO history entries
+            db.prepare('DELETE FROM elo_history WHERE match_id = ?').run(matchId);
+            
+            // Delete match
+            db.prepare('DELETE FROM matches WHERE id = ?').run(matchId);
+            
+            // Reverse the ELO changes
+            const winner = db.prepare('SELECT * FROM players WHERE id = ?').get(match.winner_id);
+            const loser = db.prepare('SELECT * FROM players WHERE id = ?').get(match.loser_id);
+            
+            db.prepare(`
+                UPDATE players 
+                SET elo_rating = elo_rating - ?, wins = wins - 1, tier = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            `).run(match.elo_change, getTier(winner.elo_rating - match.elo_change), match.winner_id);
+            
+            db.prepare(`
+                UPDATE players 
+                SET elo_rating = elo_rating + ?, losses = losses - 1, tier = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            `).run(match.elo_change, getTier(loser.elo_rating + match.elo_change), match.loser_id);
+            
+            // Update pairing if linked
+            db.prepare('UPDATE pairings SET completed = 0, match_id = NULL WHERE match_id = ?').run(matchId);
+        });
+        
+        deleteTransaction();
+        
+        res.json({ 
+            success: true, 
+            message: 'Match deleted and ELO recalculated' 
+        });
+    } catch (error) {
+        console.error('Delete match error:', error);
+        res.status(500).json({ error: 'Failed to delete match' });
+    }
+});
+
+/**
+ * GET /api/admin/stats - Get system statistics (admin only)
+ */
+app.get('/api/admin/stats', requireAdmin, (req, res) => {
+    try {
+        const totalUsers = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+        const totalPlayers = db.prepare('SELECT COUNT(*) as count FROM players').get().count;
+        const totalMatches = db.prepare('SELECT COUNT(*) as count FROM matches').get().count;
+        const totalRounds = db.prepare('SELECT COUNT(*) as count FROM rounds').get().count;
+        const activeSeason = db.prepare("SELECT * FROM seasons WHERE status = 'active' ORDER BY created_at DESC LIMIT 1").get();
+        const completedPairings = db.prepare('SELECT COUNT(*) as count FROM pairings WHERE completed = 1').get().count;
+        const pendingPairings = db.prepare('SELECT COUNT(*) as count FROM pairings WHERE completed = 0').get().count;
+        
+        res.json({
+            totalUsers,
+            totalPlayers,
+            totalMatches,
+            totalRounds,
+            completedPairings,
+            pendingPairings,
+            activeSeason
+        });
+    } catch (error) {
+        console.error('Get stats error:', error);
+        res.status(500).json({ error: 'Failed to get statistics' });
+    }
+});
+
+/**
+ * GET /api/admin/seasons - Get all seasons (admin only)
+ */
+app.get('/api/admin/seasons', requireAdmin, (req, res) => {
+    try {
+        const seasons = db.prepare(`
+            SELECT s.*, p.name as winner_name, p.elo_rating as winner_elo
+            FROM seasons s
+            LEFT JOIN players p ON s.winner_id = p.id
+            ORDER BY s.created_at DESC
+        `).all();
+        
+        res.json(seasons);
+    } catch (error) {
+        console.error('Get seasons error:', error);
+        res.status(500).json({ error: 'Failed to get seasons' });
+    }
+});
+
+/**
+ * POST /api/admin/season/start - Start a new season (admin only)
+ */
+app.post('/api/admin/season/start', requireAdmin, (req, res) => {
+    try {
+        const { name, resetElo } = req.body;
+        
+        if (!name) {
+            return res.status(400).json({ error: 'Season name is required' });
+        }
+        
+        const startTransaction = db.transaction(() => {
+            // Close any active seasons
+            db.prepare("UPDATE seasons SET status = 'completed', end_date = date('now') WHERE status = 'active'").run();
+            
+            // Close active rounds
+            db.prepare("UPDATE rounds SET status = 'completed' WHERE status = 'active'").run();
+            
+            // Create new season
+            const result = db.prepare(`
+                INSERT INTO seasons (name, start_date, status)
+                VALUES (?, date('now'), 'active')
+            `).run(name);
+            
+            // Optionally reset ELO ratings
+            if (resetElo) {
+                db.prepare(`
+                    UPDATE players 
+                    SET elo_rating = 1250, 
+                        wins = 0, 
+                        losses = 0, 
+                        tier = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                `).run(getTier(1250));
+                
+                // Record ELO reset in history
+                const players = db.prepare('SELECT id FROM players').all();
+                const insertHistory = db.prepare(`
+                    INSERT INTO elo_history (player_id, elo_rating)
+                    VALUES (?, 1250)
+                `);
+                
+                for (const player of players) {
+                    insertHistory.run(player.id);
+                }
+            }
+            
+            return result.lastInsertRowid;
+        });
+        
+        const seasonId = startTransaction();
+        
+        res.json({ 
+            success: true, 
+            message: 'New season started',
+            seasonId,
+            eloReset: resetElo
+        });
+    } catch (error) {
+        console.error('Start season error:', error);
+        res.status(500).json({ error: 'Failed to start season' });
+    }
+});
+
+/**
+ * POST /api/admin/season/end - End current season (admin only)
+ */
+app.post('/api/admin/season/end', requireAdmin, (req, res) => {
+    try {
+        const activeSeason = db.prepare("SELECT * FROM seasons WHERE status = 'active' ORDER BY created_at DESC LIMIT 1").get();
+        
+        if (!activeSeason) {
+            return res.status(400).json({ error: 'No active season to end' });
+        }
+        
+        // Get current champion
+        const champion = db.prepare(`
+            SELECT id FROM players 
+            ORDER BY elo_rating DESC 
+            LIMIT 1
+        `).get();
+        
+        // Get total matches and rounds
+        const matchCount = db.prepare(`
+            SELECT COUNT(*) as count FROM matches 
+            WHERE timestamp >= ?
+        `).get(activeSeason.start_date).count;
+        
+        const roundCount = db.prepare(`
+            SELECT COUNT(*) as count FROM rounds 
+            WHERE week_start >= ?
+        `).get(activeSeason.start_date).count;
+        
+        // End season
+        db.prepare(`
+            UPDATE seasons 
+            SET status = 'completed', 
+                end_date = date('now'),
+                winner_id = ?,
+                total_matches = ?,
+                total_rounds = ?
+            WHERE id = ?
+        `).run(champion ? champion.id : null, matchCount, roundCount, activeSeason.id);
+        
+        // Close active rounds
+        db.prepare("UPDATE rounds SET status = 'completed' WHERE status = 'active'").run();
+        
+        res.json({ 
+            success: true, 
+            message: 'Season ended',
+            championId: champion ? champion.id : null,
+            totalMatches: matchCount,
+            totalRounds: roundCount
+        });
+    } catch (error) {
+        console.error('End season error:', error);
+        res.status(500).json({ error: 'Failed to end season' });
+    }
+});
+
+/**
  * POST /api/force-pairings - Manually trigger pairing generation (for testing)
  */
 app.post('/api/force-pairings', requireAuth, (req, res) => {
@@ -667,6 +1116,10 @@ app.get('/player/:id', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'player.html'));
 });
 
+app.get('/admin', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
 // Health check
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date() });
@@ -675,7 +1128,7 @@ app.get('/health', (req, res) => {
 // ==================== START SERVER ====================
 
 (async () => {
-    initDatabase();
+    await initDatabase();
     
     app.listen(PORT, () => {
         console.log('🏓 The Swyftx Slam Web App is running!');

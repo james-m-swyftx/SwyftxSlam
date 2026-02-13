@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
+    is_admin BOOLEAN DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -14,6 +15,8 @@ CREATE TABLE IF NOT EXISTS players (
     user_id INTEGER UNIQUE NOT NULL,
     slack_id TEXT UNIQUE,
     name TEXT NOT NULL,
+    email TEXT,
+    avatar_url TEXT,
     elo_rating INTEGER DEFAULT 1250,
     wins INTEGER DEFAULT 0,
     losses INTEGER DEFAULT 0,
@@ -71,11 +74,27 @@ CREATE TABLE IF NOT EXISTS elo_history (
     FOREIGN KEY (match_id) REFERENCES matches(id)
 );
 
+-- Seasons table: tracks season history and archives
+CREATE TABLE IF NOT EXISTS seasons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE,
+    status TEXT DEFAULT 'active',
+    winner_id INTEGER,
+    total_matches INTEGER DEFAULT 0,
+    total_rounds INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (winner_id) REFERENCES players(id)
+);
+
 -- Indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_players_elo ON players(elo_rating DESC);
 CREATE INDEX IF NOT EXISTS idx_players_user_id ON players(user_id);
 CREATE INDEX IF NOT EXISTS idx_players_slack_id ON players(slack_id);
+CREATE INDEX IF NOT EXISTS idx_players_email ON players(email);
 CREATE INDEX IF NOT EXISTS idx_matches_timestamp ON matches(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_pairings_round ON pairings(round_id);
 CREATE INDEX IF NOT EXISTS idx_elo_history_player ON elo_history(player_id, recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_seasons_status ON seasons(status);

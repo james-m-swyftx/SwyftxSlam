@@ -17,6 +17,7 @@
                 <a href="/profile">Profile</a>
                 <a href="/pairings">Pairings</a>
                 <a href="/report">Report Match</a>
+                <span id="adminLink"></span>
                 <button id="themeToggle" class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">☀️</button>
                 <span class="nav-username" id="username"></span>
                 <button onclick="logout()">Logout</button>
@@ -68,6 +69,10 @@
                 if (!data.loggedIn) {
                     window.location.href = '/login';
                     return;
+                }
+                
+                if (data.isAdmin) {
+                    document.getElementById("adminLink").innerHTML = "<a href=\"/admin\">Admin</a>";
                 }
                 
                 document.getElementById('username').textContent = data.username;

@@ -38,11 +38,13 @@
                 let navHTML = '<a href="/leaderboard">Leaderboard</a>';
                 
                 if (data.loggedIn) {
+                    const adminLink = data.isAdmin ? '<a href="/admin">Admin</a>' : '';
                     navHTML += `
                         <a href="/feed">Feed</a>
                         <a href="/profile">Profile</a>
                         <a href="/pairings">Pairings</a>
                         <a href="/report">Report Match</a>
+                        ${adminLink}
                         <button id="themeToggle" class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">☀️</button>
                         <span class="nav-username">${data.username}</span>
                         <button onclick="logout()">Logout</button>
@@ -92,11 +94,16 @@
                         }
                     }
                     
+                    const avatarUrl = player.avatar_url || `https://www.gravatar.com/avatar/?d=mp&s=80`;
+                    
                     html += `<tr>
                         <td class="rank ${rankClass}">${medal} ${rank}</td>
                         <td class="player-name">
                             <a href="/player/${player.id}" style="color: var(--text-heading); text-decoration: none;">
-                                ${badgeHtml}${player.name}
+                                <div class="avatar-container">
+                                    <img src="${avatarUrl}" alt="${player.name}" class="avatar avatar-small">
+                                    <span>${badgeHtml}${player.name}</span>
+                                </div>
                             </a>
                         </td>
                         <td><span class="tier-badge">${player.tier}</span></td>

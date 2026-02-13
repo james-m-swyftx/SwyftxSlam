@@ -13,8 +13,22 @@ async function loadProfile() {
         currentPlayer = await response.json();
         
         document.getElementById('username').textContent = currentPlayer.username;
+        
+        // Check if admin and add link
+        const sessionRes = await fetch('/api/session');
+        const sessionData = await sessionRes.json();
+        if (sessionData.isAdmin) {
+            document.getElementById('adminLink').innerHTML = '<a href="/admin">Admin</a>';
+        }
+        
         document.getElementById('loading').classList.add('hidden');
         document.getElementById('profileContent').classList.remove('hidden');
+        
+        // Update avatar and header
+        const avatarUrl = currentPlayer.avatar_url || `https://www.gravatar.com/avatar/?d=mp&s=200`;
+        document.getElementById('profileAvatar').src = avatarUrl;
+        document.getElementById('profileName').textContent = currentPlayer.name;
+        document.getElementById('profileTier').textContent = currentPlayer.tier;
         
         document.getElementById('eloValue').textContent = currentPlayer.elo_rating;
         document.getElementById('tierValue').textContent = currentPlayer.tier;
@@ -24,6 +38,11 @@ async function loadProfile() {
         document.getElementById('playerName').textContent = currentPlayer.name;
         document.getElementById('playerUsername').textContent = currentPlayer.username;
         document.getElementById('memberSince').textContent = new Date(currentPlayer.created_at).toLocaleDateString();
+        
+        // Set email input if available
+        if (currentPlayer.email) {
+            document.getElementById('emailInput').value = currentPlayer.email;
+        }
         
         const totalGames = currentPlayer.wins + currentPlayer.losses;
         const winRate = totalGames > 0 ? ((currentPlayer.wins / totalGames) * 100).toFixed(1) + '%' : 'N/A';
@@ -278,6 +297,37 @@ function switchTab(tabName, event) {
     
     document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
     document.getElementById(`tab-${tabName}`).classList.add('active');
+}
+
+async function updateEmail() {
+    const email = document.getElementById('emailInput').value.trim();
+    
+    if (!email) {
+        alert('Please enter an email address');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/update-profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('Profile updated! Your avatar will be updated based on your Gravatar.');
+            // Update avatar immediately
+            document.getElementById('profileAvatar').src = data.avatar_url;
+            currentPlayer.avatar_url = data.avatar_url;
+        } else {
+            alert(data.error || 'Failed to update profile');
+        }
+    } catch (error) {
+        console.error('Error updating profile:', error);
+        alert('Failed to update profile');
+    }
 }
 
 async function logout() {

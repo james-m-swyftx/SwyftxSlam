@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Swyftx Slam</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="container">
+        <nav class="nav">
+            <h1>🏓 Swyftx Slam - Admin</h1>
+            <div class="nav-links">
+                <a href="/feed">Feed</a>
+                <a href="/leaderboard">Leaderboard</a>
+                <a href="/pairings">Pairings</a>
+                <a href="/report">Report Match</a>
+                <a href="/profile">Profile</a>
+                <a href="/admin" class="active">Admin</a>
+                <a href="#" id="logoutBtn">Logout</a>
+            </div>
+            <button id="themeToggle" class="theme-toggle" aria-label="Toggle theme">
+                <span class="theme-icon">🌙</span>
+            </button>
+        </nav>
+
+        <div id="accessDenied" class="error-message" style="display: none;">
+            <h2>🚫 Access Denied</h2>
+            <p>You don't have admin permissions. Contact an administrator for access.</p>
+            <a href="/feed" class="btn">Back to Feed</a>
+        </div>
+
+        <div id="adminContent" style="display: none;">
+            <div class="admin-tabs">
+                <button class="tab-btn active" data-tab="stats">📊 Statistics</button>
+                <button class="tab-btn" data-tab="users">👥 Users</button>
+                <button class="tab-btn" data-tab="matches">🏓 Matches</button>
+                <button class="tab-btn" data-tab="seasons">🏆 Seasons</button>
+            </div>
+
+            <!-- Statistics Tab -->
+            <div class="tab-content active" id="stats-tab">
+                <h2>System Statistics</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalUsers">-</div>
+                        <div class="stat-label">Total Users</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalPlayers">-</div>
+                        <div class="stat-label">Active Players</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalMatches">-</div>
+                        <div class="stat-label">Total Matches</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalRounds">-</div>
+                        <div class="stat-label">Total Rounds</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="completedPairings">-</div>
+                        <div class="stat-label">Completed Pairings</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="pendingPairings">-</div>
+                        <div class="stat-label">Pending Pairings</div>
+                    </div>
+                </div>
+
+                <div class="admin-section">
+                    <h3>Current Season</h3>
+                    <div id="currentSeasonInfo" class="info-box">
+                        <p>Loading...</p>
+                    </div>
+                </div>
+
+                <div class="admin-section">
+                    <h3>Quick Actions</h3>
+                    <button id="forcePairingsBtn" class="btn">🎲 Generate Pairings</button>
+                </div>
+            </div>
+
+            <!-- Users Tab -->
+            <div class="tab-content" id="users-tab">
+                <h2>User Management</h2>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Username</th>
+                                <th>Player Name</th>
+                                <th>ELO</th>
+                                <th>W/L</th>
+                                <th>Admin</th>
+                                <th>Registered</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody">
+                            <tr><td colspan="8">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Matches Tab -->
+            <div class="tab-content" id="matches-tab">
+                <h2>Match Management</h2>
+                <p class="warning-text">⚠️ Deleting matches will recalculate ELO ratings</p>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Date</th>
+                                <th>Winner</th>
+                                <th>Loser</th>
+                                <th>Score</th>
+                                <th>ELO Change</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="matchesTableBody">
+                            <tr><td colspan="7">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pagination" id="matchesPagination"></div>
+            </div>
+
+            <!-- Seasons Tab -->
+            <div class="tab-content" id="seasons-tab">
+                <h2>Season Management</h2>
+                
+                <div class="admin-section">
+                    <h3>Current Season</h3>
+                    <div id="currentSeasonControl" class="season-control">
+                        <p>Loading...</p>
+                    </div>
+                </div>
+
+                <div class="admin-section">
+                    <h3>Start New Season</h3>
+                    <div class="form-group">
+                        <label for="seasonName">Season Name</label>
+                        <input type="text" id="seasonName" placeholder="e.g., Spring 2026">
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="resetElo">
+                            Reset all ELO ratings to 1250
+                        </label>
+                    </div>
+                    <button id="startSeasonBtn" class="btn">🏁 Start New Season</button>
+                </div>
+
+                <div class="admin-section">
+                    <h3>Season History</h3>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Season</th>
+                                    <th>Status</th>
+                                    <th>Start Date</th>
+                                    <th>End Date</th>
+                                    <th>Winner</th>
+                                    <th>Matches</th>
+                                    <th>Rounds</th>
+                                </tr>
+                            </thead>
+                            <tbody id="seasonsTableBody">
+                                <tr><td colspan="7">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/theme.js"></script>
+    <script>
+        let currentPage = 1;
+
+        // Check admin access
+        async function checkAdminAccess() {
+            try {
+                const res = await fetch('/api/session');
+                const data = await res.json();
+                
+                if (!data.loggedIn) {
+                    window.location.href = '/login';
+                    return false;
+                }
+                
+                if (!data.isAdmin) {
+                    document.getElementById('accessDenied').style.display = 'block';
+                    return false;
+                }
+                
+                document.getElementById('adminContent').style.display = 'block';
+                return true;
+            } catch (error) {
+                console.error('Session check error:', error);
+                return false;
+            }
+        }
+
+        // Tab switching
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tab = btn.dataset.tab;
+                
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                
+                btn.classList.add('active');
+                document.getElementById(`${tab}-tab`).classList.add('active');
+                
+                // Load data for active tab
+                if (tab === 'stats') loadStats();
+                if (tab === 'users') loadUsers();
+                if (tab === 'matches') loadMatches(1);
+                if (tab === 'seasons') loadSeasons();
+            });
+        });
+
+        // Load statistics
+        async function loadStats() {
+            try {
+                const res = await fetch('/api/admin/stats');
+                const data = await res.json();
+                
+                document.getElementById('totalUsers').textContent = data.totalUsers;
+                document.getElementById('totalPlayers').textContent = data.totalPlayers;
+                document.getElementById('totalMatches').textContent = data.totalMatches;
+                document.getElementById('totalRounds').textContent = data.totalRounds;
+                document.getElementById('completedPairings').textContent = data.completedPairings;
+                document.getElementById('pendingPairings').textContent = data.pendingPairings;
+                
+                const seasonInfo = document.getElementById('currentSeasonInfo');
+                if (data.activeSeason) {
+                    seasonInfo.innerHTML = `
+                        <p><strong>Name:</strong> ${data.activeSeason.name}</p>
+                        <p><strong>Started:</strong> ${new Date(data.activeSeason.start_date).toLocaleDateString()}</p>
+                        <p><strong>Status:</strong> <span class="badge badge-success">Active</span></p>
+                    `;
+                } else {
+                    seasonInfo.innerHTML = '<p>No active season</p>';
+                }
+            } catch (error) {
+                console.error('Load stats error:', error);
+            }
+        }
+
+        // Load users
+        async function loadUsers() {
+            try {
+                const res = await fetch('/api/admin/users');
+                const users = await res.json();
+                
+                const tbody = document.getElementById('usersTableBody');
+                
+                if (users.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8">No users found</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = users.map(user => `
+                    <tr>
+                        <td>${user.id}</td>
+                        <td>${user.username}</td>
+                        <td>${user.name || '-'}</td>
+                        <td>${user.elo_rating || '-'}</td>
+                        <td>${user.wins || 0}/${user.losses || 0}</td>
+                        <td>
+                            <span class="badge ${user.is_admin ? 'badge-success' : 'badge-secondary'}">
+                                ${user.is_admin ? '✅ Admin' : '❌ User'}
+                            </span>
+                        </td>
+                        <td>${new Date(user.created_at).toLocaleDateString()}</td>
+                        <td>
+                            <button class="btn-small" onclick="toggleAdmin(${user.id}, ${user.is_admin})">
+                                ${user.is_admin ? 'Demote' : 'Promote'}
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                console.error('Load users error:', error);
+            }
+        }
+
+        // Toggle admin status
+        async function toggleAdmin(userId, isAdmin) {
+            if (!confirm(`Are you sure you want to ${isAdmin ? 'demote' : 'promote'} this user?`)) {
+                return;
+            }
+            
+            try {
+                const res = await fetch('/api/admin/toggle-admin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId })
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    alert(data.message);
+                    loadUsers();
+                } else {
+                    alert(data.error || 'Failed to toggle admin status');
+                }
+            } catch (error) {
+                console.error('Toggle admin error:', error);
+                alert('Failed to toggle admin status');
+            }
+        }
+
+        // Load matches
+        async function loadMatches(page) {
+            currentPage = page;
+            try {
+                const res = await fetch(`/api/admin/matches?page=${page}`);
+                const data = await res.json();
+                
+                const tbody = document.getElementById('matchesTableBody');
+                
+                if (data.matches.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7">No matches found</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = data.matches.map(match => `
+                    <tr>
+                        <td>${match.id}</td>
+                        <td>${new Date(match.timestamp).toLocaleDateString()}</td>
+                        <td>${match.winner_name}</td>
+                        <td>${match.loser_name}</td>
+                        <td>${match.winner_score}-${match.loser_score}</td>
+                        <td>+${match.elo_change}</td>
+                        <td>
+                            <button class="btn-small btn-danger" onclick="deleteMatch(${match.id})">
+                                Delete
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+                
+                // Pagination
+                const totalPages = Math.ceil(data.total / data.limit);
+                const pagination = document.getElementById('matchesPagination');
+                pagination.innerHTML = '';
+                
+                if (totalPages > 1) {
+                    for (let i = 1; i <= totalPages; i++) {
+                        const btn = document.createElement('button');
+                        btn.textContent = i;
+                        btn.className = i === page ? 'btn-small active' : 'btn-small';
+                        btn.onclick = () => loadMatches(i);
+                        pagination.appendChild(btn);
+                    }
+                }
+            } catch (error) {
+                console.error('Load matches error:', error);
+            }
+        }
+
+        // Delete match
+        async function deleteMatch(matchId) {
+            if (!confirm('Are you sure you want to delete this match? ELO ratings will be recalculated.')) {
+                return;
+            }
+            
+            try {
+                const res = await fetch(`/api/admin/match/${matchId}`, {
+                    method: 'DELETE'
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    alert(data.message);
+                    loadMatches(currentPage);
+                    loadStats();
+                } else {
+                    alert(data.error || 'Failed to delete match');
+                }
+            } catch (error) {
+                console.error('Delete match error:', error);
+                alert('Failed to delete match');
+            }
+        }
+
+        // Load seasons
+        async function loadSeasons() {
+            try {
+                const res = await fetch('/api/admin/seasons');
+                const seasons = await res.json();
+                
+                // Update current season control
+                const activeSeason = seasons.find(s => s.status === 'active');
+                const control = document.getElementById('currentSeasonControl');
+                
+                if (activeSeason) {
+                    control.innerHTML = `
+                        <p><strong>${activeSeason.name}</strong></p>
+                        <p>Started: ${new Date(activeSeason.start_date).toLocaleDateString()}</p>
+                        <button class="btn btn-danger" onclick="endSeason()">🏁 End Season</button>
+                    `;
+                } else {
+                    control.innerHTML = '<p>No active season. Start a new one below.</p>';
+                }
+                
+                // Update history table
+                const tbody = document.getElementById('seasonsTableBody');
+                
+                if (seasons.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7">No seasons found</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = seasons.map(season => `
+                    <tr>
+                        <td><strong>${season.name}</strong></td>
+                        <td>
+                            <span class="badge ${season.status === 'active' ? 'badge-success' : 'badge-secondary'}">
+                                ${season.status}
+                            </span>
+                        </td>
+                        <td>${new Date(season.start_date).toLocaleDateString()}</td>
+                        <td>${season.end_date ? new Date(season.end_date).toLocaleDateString() : '-'}</td>
+                        <td>${season.winner_name || '-'}</td>
+                        <td>${season.total_matches || 0}</td>
+                        <td>${season.total_rounds || 0}</td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                console.error('Load seasons error:', error);
+            }
+        }
+
+        // Start new season
+        document.getElementById('startSeasonBtn').addEventListener('click', async () => {
+            const name = document.getElementById('seasonName').value.trim();
+            const resetElo = document.getElementById('resetElo').checked;
+            
+            if (!name) {
+                alert('Please enter a season name');
+                return;
+            }
+            
+            const confirmMsg = resetElo 
+                ? 'This will start a new season AND reset all ELO ratings to 1250. Continue?' 
+                : 'This will start a new season. Continue?';
+            
+            if (!confirm(confirmMsg)) {
+                return;
+            }
+            
+            try {
+                const res = await fetch('/api/admin/season/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, resetElo })
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    alert(data.message + (data.eloReset ? ' (ELO ratings reset)' : ''));
+                    document.getElementById('seasonName').value = '';
+                    document.getElementById('resetElo').checked = false;
+                    loadSeasons();
+                    loadStats();
+                } else {
+                    alert(data.error || 'Failed to start season');
+                }
+            } catch (error) {
+                console.error('Start season error:', error);
+                alert('Failed to start season');
+            }
+        });
+
+        // End season
+        async function endSeason() {
+            if (!confirm('Are you sure you want to end the current season?')) {
+                return;
+            }
+            
+            try {
+                const res = await fetch('/api/admin/season/end', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    alert(`Season ended! ${data.totalMatches} matches, ${data.totalRounds} rounds completed.`);
+                    loadSeasons();
+                    loadStats();
+                } else {
+                    alert(data.error || 'Failed to end season');
+                }
+            } catch (error) {
+                console.error('End season error:', error);
+                alert('Failed to end season');
+            }
+        }
+
+        // Force pairings
+        document.getElementById('forcePairingsBtn').addEventListener('click', async () => {
+            if (!confirm('Generate new pairings now?')) {
+                return;
+            }
+            
+            try {
+                const res = await fetch('/api/force-pairings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await res.json();
+                
+                if (data.success) {
+                    alert(data.message);
+                    loadStats();
+                } else {
+                    alert(data.error || 'Failed to generate pairings');
+                }
+            } catch (error) {
+                console.error('Force pairings error:', error);
+                alert('Failed to generate pairings');
+            }
+        });
+
+        // Logout
+        document.getElementById('logoutBtn').addEventListener('click', async (e) => {
+            e.preventDefault();
+            await fetch('/api/logout', { method: 'POST' });
+            window.location.href = '/login';
+        });
+
+        // Initialize
+        (async () => {
+            const hasAccess = await checkAdminAccess();
+            if (hasAccess) {
+                loadStats();
+            }
+        })();
+    </script>
+</body>
+</html>
