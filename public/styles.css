@@ -601,9 +601,35 @@ body.light-mode .rival-card:hover {
         gap: 5px;
     }
     
+    .tabs {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    
     .tab-btn {
         padding: 10px 16px;
         font-size: 0.9em;
+    }
+    
+    /* Make leaderboard table scrollable on mobile */
+    .leaderboard-table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+    
+    .leaderboard-table thead,
+    .leaderboard-table tbody,
+    .leaderboard-table tr {
+        display: table;
+        width: 100%;
+        table-layout: fixed;
+    }
+    
+    .leaderboard-table th,
+    .leaderboard-table td {
+        padding: 10px 8px;
+        font-size: 0.85em;
     }
 }
 
