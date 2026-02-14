@@ -24,12 +24,6 @@ async function loadProfile() {
         document.getElementById('loading').classList.add('hidden');
         document.getElementById('profileContent').classList.remove('hidden');
         
-        // Update avatar and header
-        const avatarUrl = currentPlayer.avatar_url || `https://www.gravatar.com/avatar/?d=mp&s=200`;
-        document.getElementById('profileAvatar').src = avatarUrl;
-        document.getElementById('profileName').textContent = currentPlayer.name;
-        document.getElementById('profileTier').textContent = currentPlayer.tier;
-        
         document.getElementById('eloValue').textContent = currentPlayer.elo_rating;
         document.getElementById('tierValue').textContent = currentPlayer.tier;
         document.getElementById('winsValue').textContent = currentPlayer.wins;
@@ -39,11 +33,6 @@ async function loadProfile() {
         document.getElementById('playerUsername').textContent = currentPlayer.username;
         document.getElementById('memberSince').textContent = new Date(currentPlayer.created_at).toLocaleDateString();
         
-        // Set email input if available
-        if (currentPlayer.email) {
-            document.getElementById('emailInput').value = currentPlayer.email;
-        }
-        
         const totalGames = currentPlayer.wins + currentPlayer.losses;
         const winRate = totalGames > 0 ? ((currentPlayer.wins / totalGames) * 100).toFixed(1) + '%' : 'N/A';
         document.getElementById('winRate').textContent = winRate;
@@ -51,6 +40,7 @@ async function loadProfile() {
         loadEloHistory();
         loadMatchHistory();
         loadRivals();
+        loadRecommendedOpponents();
         
     } catch (error) {
         console.error('Error loading profile:', error);
@@ -299,34 +289,66 @@ function switchTab(tabName, event) {
     document.getElementById(`tab-${tabName}`).classList.add('active');
 }
 
-async function updateEmail() {
-    const email = document.getElementById('emailInput').value.trim();
-    
-    if (!email) {
-        alert('Please enter an email address');
-        return;
-    }
-    
+async function loadRecommendedOpponents() {
     try {
-        const response = await fetch('/api/update-profile', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email })
+        const response = await fetch('/api/recommended-opponents');
+        const opponents = await response.json();
+        
+        const container = document.getElementById('recommendedList');
+        const noResults = document.getElementById('noRecommended');
+        
+        if (opponents.length === 0) {
+            container.classList.add('hidden');
+            noResults.classList.remove('hidden');
+            return;
+        }
+        
+        container.classList.remove('hidden');
+        noResults.classList.add('hidden');
+        
+        let html = '';
+        opponents.forEach(opp => {
+            const winRate = opp.wins + opp.losses > 0 
+                ? ((opp.wins / (opp.wins + opp.losses)) * 100).toFixed(0) 
+                : 0;
+            
+            html += `
+                <div class="rival-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <div>
+                            <a href="/player/${opp.id}" style="font-size: 1.2em; font-weight: 600; color: var(--text-heading);">
+                                ${opp.name}
+                            </a>
+                            <div style="color: var(--text-secondary); margin-top: 5px;">
+                                <span class="tier-badge">${opp.tier}</span>
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 1.3em; font-weight: bold; color: var(--accent-primary);">
+                                ${opp.elo_rating}
+                            </div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">
+                                ±${opp.elo_diff} ELO
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; padding-top: 10px; border-top: 1px solid var(--card-border);">
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Record</div>
+                            <div>${opp.wins}W - ${opp.losses}L (${winRate}%)</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="color: var(--text-secondary); font-size: 0.9em;">Played Before</div>
+                            <div>${opp.times_played} times</div>
+                        </div>
+                    </div>
+                </div>
+            `;
         });
         
-        const data = await response.json();
-        
-        if (data.success) {
-            alert('Profile updated! Your avatar will be updated based on your Gravatar.');
-            // Update avatar immediately
-            document.getElementById('profileAvatar').src = data.avatar_url;
-            currentPlayer.avatar_url = data.avatar_url;
-        } else {
-            alert(data.error || 'Failed to update profile');
-        }
+        container.innerHTML = html;
     } catch (error) {
-        console.error('Error updating profile:', error);
-        alert('Failed to update profile');
+        console.error('Error loading recommended opponents:', error);
     }
 }
 

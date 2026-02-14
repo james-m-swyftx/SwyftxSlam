@@ -1,5 +1,3 @@
-const crypto = require('crypto');
-
 const K_FACTOR = 60;
 
 /**
@@ -87,20 +85,6 @@ function generateSwissPairings(players) {
 }
 
 /**
- * Generate Gravatar URL from email
- * @param {string} email - User's email address
- * @param {number} size - Image size (default 200)
- * @returns {string} Gravatar URL
- */
-function getGravatarUrl(email, size = 200) {
-    if (!email) {
-        return `https://www.gravatar.com/avatar/?d=mp&s=${size}`;
-    }
-    const hash = crypto.createHash('md5').update(email.toLowerCase().trim()).digest('hex');
-    return `https://www.gravatar.com/avatar/${hash}?d=mp&s=${size}`;
-}
-
-/**
  * Generate a trash talk message based on ELO difference
  * @param {string} winnerName - Winner's name
  * @param {string} loserName - Loser's name
@@ -137,6 +121,5 @@ module.exports = {
     getTier,
     generateSwissPairings,
     generateTrashTalk,
-    getGravatarUrl,
     K_FACTOR
 };

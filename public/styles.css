@@ -558,10 +558,30 @@ body.light-mode .rival-card:hover {
     .nav {
         flex-direction: column;
         gap: 15px;
+        padding: 15px;
+    }
+    
+    .nav-brand {
+        font-size: 1.3em;
     }
     
     .nav-links {
+        flex-wrap: wrap;
         justify-content: center;
+        gap: 8px;
+        width: 100%;
+    }
+    
+    .nav-links a,
+    .nav-links button {
+        padding: 6px 12px;
+        font-size: 0.9em;
+    }
+    
+    .nav-username {
+        width: 100%;
+        text-align: center;
+        padding: 8px 0;
     }
     
     .card {
@@ -576,6 +596,15 @@ body.light-mode .rival-card:hover {
         flex-direction: column;
         gap: 10px;
     }
+    
+    .admin-tabs {
+        gap: 5px;
+    }
+    
+    .tab-btn {
+        padding: 10px 16px;
+        font-size: 0.9em;
+    }
 }
 
 /* Utilities */
@@ -589,32 +618,6 @@ a {
 
 a:hover {
     opacity: 0.8;
-}
-
-/* Avatar Styles */
-.avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 2px solid var(--accent-primary);
-}
-
-.avatar-small {
-    width: 30px;
-    height: 30px;
-}
-
-.avatar-large {
-    width: 80px;
-    height: 80px;
-    border: 3px solid var(--accent-primary);
-}
-
-.avatar-container {
-    display: flex;
-    align-items: center;
-    gap: 12px;
 }
 
 /* Admin Panel Styles */

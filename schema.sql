@@ -15,8 +15,6 @@ CREATE TABLE IF NOT EXISTS players (
     user_id INTEGER UNIQUE NOT NULL,
     slack_id TEXT UNIQUE,
     name TEXT NOT NULL,
-    email TEXT,
-    avatar_url TEXT,
     elo_rating INTEGER DEFAULT 1250,
     wins INTEGER DEFAULT 0,
     losses INTEGER DEFAULT 0,
@@ -93,7 +91,6 @@ CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_players_elo ON players(elo_rating DESC);
 CREATE INDEX IF NOT EXISTS idx_players_user_id ON players(user_id);
 CREATE INDEX IF NOT EXISTS idx_players_slack_id ON players(slack_id);
-CREATE INDEX IF NOT EXISTS idx_players_email ON players(email);
 CREATE INDEX IF NOT EXISTS idx_matches_timestamp ON matches(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_pairings_round ON pairings(round_id);
 CREATE INDEX IF NOT EXISTS idx_elo_history_player ON elo_history(player_id, recorded_at DESC);

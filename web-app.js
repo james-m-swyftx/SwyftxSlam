@@ -11,7 +11,7 @@ const Database = require('better-sqlite3');
 const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
-const { calculateNewRatings, getTier, generateSwissPairings, generateTrashTalk, getGravatarUrl } = require('./elo');
+const { calculateNewRatings, getTier, generateSwissPairings, generateTrashTalk } = require('./elo');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -55,20 +55,6 @@ async function initDatabase() {
     try {
         db.prepare("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0").run();
         console.log('✅ Added is_admin column to users table');
-    } catch (e) {
-        // Column already exists
-    }
-    
-    try {
-        db.prepare("ALTER TABLE players ADD COLUMN email TEXT").run();
-        console.log('✅ Added email column to players table');
-    } catch (e) {
-        // Column already exists
-    }
-    
-    try {
-        db.prepare("ALTER TABLE players ADD COLUMN avatar_url TEXT").run();
-        console.log('✅ Added avatar_url column to players table');
     } catch (e) {
         // Column already exists
     }
@@ -316,48 +302,10 @@ app.get('/api/profile', requireAuth, (req, res) => {
             });
         }
         
-        // Update avatar_url if email exists but avatar_url is missing
-        if (player.email && !player.avatar_url) {
-            const avatarUrl = getGravatarUrl(player.email);
-            db.prepare('UPDATE players SET avatar_url = ? WHERE id = ?').run(avatarUrl, player.id);
-            player.avatar_url = avatarUrl;
-        }
-        
         res.json(player);
     } catch (error) {
         console.error('Profile error:', error);
         res.status(500).json({ error: 'Failed to load profile' });
-    }
-});
-
-/**
- * POST /api/update-profile - Update user profile
- */
-app.post('/api/update-profile', requireAuth, (req, res) => {
-    try {
-        const { email } = req.body;
-        const player = db.prepare('SELECT id FROM players WHERE user_id = ?').get(req.session.userId);
-        
-        if (!player) {
-            return res.status(404).json({ error: 'Player not found' });
-        }
-        
-        const avatarUrl = getGravatarUrl(email);
-        
-        db.prepare(`
-            UPDATE players 
-            SET email = ?, avatar_url = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        `).run(email, avatarUrl, player.id);
-        
-        res.json({ 
-            success: true, 
-            message: 'Profile updated',
-            avatar_url: avatarUrl
-        });
-    } catch (error) {
-        console.error('Update profile error:', error);
-        res.status(500).json({ error: 'Failed to update profile' });
     }
 });
 
@@ -667,6 +615,53 @@ app.get('/api/rivals', requireAuth, (req, res) => {
     } catch (error) {
         console.error('Rivals error:', error);
         res.status(500).json({ error: 'Failed to load rivals' });
+    }
+});
+
+/**
+ * GET /api/recommended-opponents - Get recommended opponents based on similar ELO
+ */
+app.get('/api/recommended-opponents', requireAuth, (req, res) => {
+    try {
+        const player = db.prepare('SELECT id, elo_rating FROM players WHERE user_id = ?').get(req.session.userId);
+        
+        if (!player) {
+            return res.json([]);
+        }
+        
+        // Find players with similar ELO (within 100 points)
+        const recommended = db.prepare(`
+            SELECT 
+                p.id,
+                p.name,
+                p.elo_rating,
+                p.tier,
+                p.wins,
+                p.losses,
+                ABS(p.elo_rating - ?) as elo_diff,
+                COALESCE(match_count.total, 0) as times_played
+            FROM players p
+            LEFT JOIN (
+                SELECT 
+                    CASE 
+                        WHEN winner_id = ? THEN loser_id
+                        WHEN loser_id = ? THEN winner_id
+                    END as opponent_id,
+                    COUNT(*) as total
+                FROM matches
+                WHERE winner_id = ? OR loser_id = ?
+                GROUP BY opponent_id
+            ) match_count ON p.id = match_count.opponent_id
+            WHERE p.id != ?
+                AND ABS(p.elo_rating - ?) <= 100
+            ORDER BY elo_diff ASC, times_played ASC
+            LIMIT 10
+        `).all(player.elo_rating, player.id, player.id, player.id, player.id, player.id, player.elo_rating);
+        
+        res.json(recommended);
+    } catch (error) {
+        console.error('Recommended opponents error:', error);
+        res.status(500).json({ error: 'Failed to load recommended opponents' });
     }
 });
 
