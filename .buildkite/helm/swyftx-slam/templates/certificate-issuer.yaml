@@ -1,0 +1,16 @@
+{{ if .Values.certIssuer.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ .Values.slamApp.name }}-issuer
+  namespace: {{ .Values.namespace }}
+spec:
+  acme:
+    server: {{ .Values.certIssuer.acme.server }}
+    privateKeySecretRef:
+      name: {{ .Values.slamApp.name }}-key
+    solvers:
+    - http01:
+       ingress:
+         class: external-ingress
+{{ end }}

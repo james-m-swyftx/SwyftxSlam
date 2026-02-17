@@ -28,3 +28,7 @@ Thumbs.db
 # Production
 dist/
 build/
+
+# Kubernetes secrets
+.buildkite/helm/values.*.yaml.local
+*.secret.yaml

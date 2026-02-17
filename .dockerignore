@@ -1,0 +1,15 @@
+node_modules
+npm-debug.log
+.env
+.env.local
+.git
+.gitignore
+*.md
+.DS_Store
+swyftx-slam.db
+swyftx-slam.db-shm
+swyftx-slam.db-wal
+*.log
+.buildkite
+.vscode
+.idea

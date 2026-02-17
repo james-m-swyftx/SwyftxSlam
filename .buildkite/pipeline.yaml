@@ -1,0 +1,68 @@
+steps:
+  - label: ":nodejs: Install & Test"
+    key: "build"
+    commands:
+      - npm ci
+      - echo "✅ Dependencies installed"
+    plugins:
+      - docker#v5.0.0:
+          image: "node:22-alpine"
+          always-pull: true
+          
+  - label: ":docker: Docker Build - Swyftx Slam"
+    key: "docker-build-slam-app"
+    commands:
+      - DOCKER_BUILDKIT=1 docker build -f ./Dockerfile . -t 551534631324.dkr.ecr.ap-southeast-2.amazonaws.com/swyftx-slam/swyftx-slam-app:${BUILDKITE_COMMIT}
+      - docker push 551534631324.dkr.ecr.ap-southeast-2.amazonaws.com/swyftx-slam/swyftx-slam-app:${BUILDKITE_COMMIT}
+    artifact_paths: []
+    retry:
+      manual:
+        permit_on_passed: true
+        
+  - key: allow-deploy-to-dev
+    block: ":rocket: Deploy to Dev"
+    depends_on:
+      - "build"
+      - "docker-build-slam-app"
+    branches:
+      - "!main"
+        
+  - label: "Deploy to Dev"
+    key: "helm-install-dev"
+    depends_on:
+      - "allow-deploy-to-dev"
+      - "build"
+      - "docker-build-slam-app"
+    commands:
+      - helm plugin install https://github.com/totango/helm-ssm
+      - helm ssm upgrade swyftx-slam ./.buildkite/helm/swyftx-slam --values ./.buildkite/helm/values.dev.yaml --set imageTag=${BUILDKITE_COMMIT} --set env.GIT_COMMIT=${BUILDKITE_COMMIT} -i -n swyftx-slam --create-namespace --cleanup-on-fail --atomic --timeout 3m0s
+    retry:
+      manual:
+        permit_on_passed: true
+    plugins:
+      - docker#v5.0.0:
+          image: "551534631324.dkr.ecr.ap-southeast-2.amazonaws.com/kube-deploy:latest"
+          environment:
+            - AWS_PROFILE=development
+            - KUBE_NAMESPACE=swyftx-slam
+            - KUBE_CLUSTER_NAME=development-cluster
+
+  - key: allow-rollback-dev
+    block: ":back: Rollback Dev"
+    depends_on: ~
+
+  - label: "Rollback Dev"
+    key: "helm-rollback-dev"
+    depends_on: "allow-rollback-dev"
+    commands:
+      - helm rollback swyftx-slam 0 ./.buildkite/helm/swyftx-slam -n swyftx-slam --cleanup-on-fail --wait --timeout 30m0s
+    retry:
+      manual:
+        permit_on_passed: true
+    plugins:
+      - docker#v5.0.0:
+          image: "551534631324.dkr.ecr.ap-southeast-2.amazonaws.com/kube-deploy:latest"
+          environment:
+            - AWS_PROFILE=development
+            - KUBE_NAMESPACE=swyftx-slam
+            - KUBE_CLUSTER_NAME=development-cluster

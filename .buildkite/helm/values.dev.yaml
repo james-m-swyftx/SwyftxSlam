@@ -1,0 +1,42 @@
+# Default values for swyftx-slam
+namespace: swyftx-slam
+
+certIssuer:
+  enabled: true
+  local: false
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+
+externalApiRoot: api.swyftx-dev.net
+internalApiRoot: api.internal.swyftx-dev.net
+
+# --------------- swyftx-slam-app ---------------
+slamApp:
+  name: swyftx-slam-app
+  path: /swyftx-slam
+  image: 551534631324.dkr.ecr.ap-southeast-2.amazonaws.com/swyftx-slam/swyftx-slam-app
+  replicas: 1
+  port: 3000
+
+# --------------- service-account ---------------
+serviceAccount:
+  iamRoleArn: arn:aws:iam::956969263292:role/compliance-development
+  enableAuthPolicy: false
+
+# --------------- ConfigMap Env Vars ---------------
+env:
+  GIT_COMMIT: null
+  NODE_ENV: production
+  PORT: "3000"
+  SESSION_SECRET: changeme-in-secrets
+  baseUrls__webBase: https://api.swyftx-dev.net/swyftx-slam/
+  CRON_SCHEDULE: "0 9 * * 1"
+
+# --------------- Secrets (from AWS Secrets Manager or manual) ---------------
+secrets:
+  SLACK_BOT_TOKEN: ""
+  SLACK_SIGNING_SECRET: ""
+  SLACK_APP_TOKEN: ""
+  RESULTS_CHANNEL_ID: ""
+  ADMIN_USERNAME: admin
+  ADMIN_PASSWORD: ""
