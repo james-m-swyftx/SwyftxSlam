@@ -22,8 +22,8 @@ const GAMES_PER_WEEK = 2;
 // Trust proxy - Required for Render.com and other hosted platforms
 app.set('trust proxy', 1);
 
-// Database setup
-const dbPath = fs.existsSync('/data') ? '/data/swyftx-slam.db' : 'swyftx-slam.db';
+// Database setup - SQLite (ephemeral on Amplify)
+const dbPath = fs.existsSync('/tmp') ? '/tmp/swyftx-slam.db' : 'swyftx-slam.db';
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
@@ -48,6 +48,8 @@ app.use(session({
  */
 async function initDatabase() {
     console.log('📊 Initializing database...');
+    console.log(`💾 Database: ${dbPath}`);
+    
     const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
     db.exec(schema);
     
@@ -63,6 +65,7 @@ async function initDatabase() {
     await ensureDefaultAdmin();
     
     console.log('✅ Database initialized!');
+    console.log('⚠️  Note: Database is ephemeral - data will be lost on redeploy');
 }
 
 /**
@@ -124,7 +127,7 @@ function requireAuth(req, res, next) {
 /**
  * Admin authentication middleware
  */
-function requireAdmin(req, res, next) {
+async function requireAdmin(req, res, next) {
     if (!req.session.userId) {
         return res.status(401).json({ error: 'Authentication required' });
     }
@@ -154,25 +157,19 @@ app.post('/api/register', async (req, res) => {
         // Hash password
         const passwordHash = await bcrypt.hash(password, 10);
         
-        // Insert user and player in transaction
-        const registerTransaction = db.transaction(() => {
-            const userResult = db.prepare(`
-                INSERT INTO users (username, password_hash)
-                VALUES (?, ?)
-            `).run(username, passwordHash);
-            
-            const userId = userResult.lastInsertRowid;
-            const startingElo = 1250;
-            
-            db.prepare(`
-                INSERT INTO players (user_id, name, elo_rating, tier)
-                VALUES (?, ?, ?, ?)
-            `).run(userId, name, startingElo, getTier(startingElo));
-            
-            return userId;
-        });
+        // Insert user and player
+        const userResult = db.prepare(`
+            INSERT INTO users (username, password_hash)
+            VALUES (?, ?)
+        `).run(username, passwordHash);
         
-        const userId = registerTransaction();
+        const userId = userResult.lastInsertRowid;
+        const startingElo = 1250;
+        
+        db.prepare(`
+            INSERT INTO players (user_id, name, elo_rating, tier)
+            VALUES (?, ?, ?, ?)
+        `).run(userId, name, startingElo, getTier(startingElo));
         
         req.session.userId = userId;
         req.session.username = username;
@@ -230,7 +227,7 @@ app.post('/api/logout', (req, res) => {
 /**
  * GET /api/session - Check if user is logged in
  */
-app.get('/api/session', (req, res) => {
+app.get('/api/session', async (req, res) => {
     if (req.session.userId) {
         const user = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(req.session.userId);
         res.json({ 
@@ -249,7 +246,7 @@ app.get('/api/session', (req, res) => {
 /**
  * GET /api/leaderboard - Get top players
  */
-app.get('/api/leaderboard', (req, res) => {
+app.get('/api/leaderboard', async (req, res) => {
     try {
         const leaderboard = db.prepare(`
             SELECT p.id, p.name, p.elo_rating, p.wins, p.losses, p.tier,
@@ -277,7 +274,7 @@ app.get('/api/leaderboard', (req, res) => {
 /**
  * GET /api/profile - Get current user's profile
  */
-app.get('/api/profile', requireAuth, (req, res) => {
+app.get('/api/profile', requireAuth, async (req, res) => {
     try {
         const user = db.prepare('SELECT username, is_admin FROM users WHERE id = ?').get(req.session.userId);
         
@@ -312,7 +309,7 @@ app.get('/api/profile', requireAuth, (req, res) => {
 /**
  * GET /api/player-history/:playerId - Get player's ELO history
  */
-app.get('/api/player-history/:playerId', requireAuth, (req, res) => {
+app.get('/api/player-history/:playerId', requireAuth, async (req, res) => {
     try {
         const playerId = parseInt(req.params.playerId);
         
@@ -334,7 +331,7 @@ app.get('/api/player-history/:playerId', requireAuth, (req, res) => {
 /**
  * GET /api/player-matches/:playerId - Get match history for any player
  */
-app.get('/api/player-matches/:playerId', requireAuth, (req, res) => {
+app.get('/api/player-matches/:playerId', requireAuth, async (req, res) => {
     try {
         const playerId = parseInt(req.params.playerId);
         
@@ -361,7 +358,7 @@ app.get('/api/player-matches/:playerId', requireAuth, (req, res) => {
 /**
  * GET /api/match-history - Get match history for current user or all
  */
-app.get('/api/match-history', requireAuth, (req, res) => {
+app.get('/api/match-history', requireAuth, async (req, res) => {
     try {
         const userId = req.session.userId;
         const showAll = req.query.all === 'true';
@@ -453,52 +450,46 @@ app.post('/api/report-match', requireAuth, async (req, res) => {
             loser.elo_rating
         );
         
-        // Update database in transaction
-        const updateTransaction = db.transaction(() => {
-            // Update players
-            db.prepare(`
-                UPDATE players 
-                SET elo_rating = ?, wins = wins + 1, tier = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            `).run(winnerNewRating, getTier(winnerNewRating), winnerId);
-            
-            db.prepare(`
-                UPDATE players 
-                SET elo_rating = ?, losses = losses + 1, tier = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            `).run(loserNewRating, getTier(loserNewRating), loserId);
-            
-            // Record match
-            const matchResult = db.prepare(`
-                INSERT INTO matches (winner_id, loser_id, winner_score, loser_score, elo_change)
-                VALUES (?, ?, ?, ?, ?)
-            `).run(winnerId, loserId, winnerScore, loserScore, ratingChange);
-            
-            const matchId = matchResult.lastInsertRowid;
-            
-            // Record ELO history for both players
-            db.prepare(`
-                INSERT INTO elo_history (player_id, elo_rating, match_id)
-                VALUES (?, ?, ?)
-            `).run(winnerId, winnerNewRating, matchId);
-            
-            db.prepare(`
-                INSERT INTO elo_history (player_id, elo_rating, match_id)
-                VALUES (?, ?, ?)
-            `).run(loserId, loserNewRating, matchId);
-            
-            // Update pairing if it exists in current round
-            db.prepare(`
-                UPDATE pairings
-                SET completed = 1, match_id = ?
-                WHERE round_id = (SELECT id FROM rounds WHERE status = 'active' ORDER BY created_at DESC LIMIT 1)
-                AND ((player1_id = ? AND player2_id = ?) OR (player1_id = ? AND player2_id = ?))
-            `).run(matchId, winnerId, loserId, loserId, winnerId);
-            
-            return matchId;
-        });
+        // Update database
+        // Update players
+        db.prepare(`
+            UPDATE players 
+            SET elo_rating = ?, wins = wins + 1, tier = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        `).run(winnerNewRating, getTier(winnerNewRating), winnerId);
         
-        updateTransaction();
+        db.prepare(`
+            UPDATE players 
+            SET elo_rating = ?, losses = losses + 1, tier = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        `).run(loserNewRating, getTier(loserNewRating), loserId);
+        
+        // Record match
+        const matchResult = db.prepare(`
+            INSERT INTO matches (winner_id, loser_id, winner_score, loser_score, elo_change)
+            VALUES (?, ?, ?, ?, ?)
+        `).run(winnerId, loserId, winnerScore, loserScore, ratingChange);
+        
+        const matchId = matchResult.lastInsertRowid;
+        
+        // Record ELO history for both players
+        db.prepare(`
+            INSERT INTO elo_history (player_id, elo_rating, match_id)
+            VALUES (?, ?, ?)
+        `).run(winnerId, winnerNewRating, matchId);
+        
+        db.prepare(`
+            INSERT INTO elo_history (player_id, elo_rating, match_id)
+            VALUES (?, ?, ?)
+        `).run(loserId, loserNewRating, matchId);
+        
+        // Update pairing if it exists in current round
+        db.prepare(`
+            UPDATE pairings
+            SET completed = 1, match_id = ?
+            WHERE round_id = (SELECT id FROM rounds WHERE status = 'active' ORDER BY created_at DESC LIMIT 1)
+            AND ((player1_id = ? AND player2_id = ?) OR (player1_id = ? AND player2_id = ?))
+        `).run(matchId, winnerId, loserId, loserId, winnerId);
         
         res.json({ 
             success: true, 
@@ -517,7 +508,7 @@ app.post('/api/report-match', requireAuth, async (req, res) => {
 /**
  * GET /api/pairings - Get current week's pairings
  */
-app.get('/api/pairings', requireAuth, (req, res) => {
+app.get('/api/pairings', requireAuth, async (req, res) => {
     try {
         const currentRound = db.prepare(`
             SELECT r.*, 
@@ -557,7 +548,7 @@ app.get('/api/pairings', requireAuth, (req, res) => {
 /**
  * GET /api/player/:playerId - Get public player profile
  */
-app.get('/api/player/:playerId', requireAuth, (req, res) => {
+app.get('/api/player/:playerId', requireAuth, async (req, res) => {
     try {
         const playerId = parseInt(req.params.playerId);
         
@@ -582,7 +573,7 @@ app.get('/api/player/:playerId', requireAuth, (req, res) => {
 /**
  * GET /api/rivals - Get rivals for current user
  */
-app.get('/api/rivals', requireAuth, (req, res) => {
+app.get('/api/rivals', requireAuth, async (req, res) => {
     try {
         const player = db.prepare('SELECT id FROM players WHERE user_id = ?').get(req.session.userId);
         
@@ -621,7 +612,7 @@ app.get('/api/rivals', requireAuth, (req, res) => {
 /**
  * GET /api/recommended-opponents - Get recommended opponents based on similar ELO
  */
-app.get('/api/recommended-opponents', requireAuth, (req, res) => {
+app.get('/api/recommended-opponents', requireAuth, async (req, res) => {
     try {
         const player = db.prepare('SELECT id, elo_rating FROM players WHERE user_id = ?').get(req.session.userId);
         
@@ -670,12 +661,13 @@ app.get('/api/recommended-opponents', requireAuth, (req, res) => {
 /**
  * Generate pairings for the week
  */
-function generateWeeklyPairings() {
+async function generateWeeklyPairings() {
     console.log('🗓️  Generating match pairings...');
     
     try {
         // Check if we've exceeded league duration
-        const roundCount = db.prepare('SELECT COUNT(*) as count FROM rounds').get().count;
+        const roundCountResult = db.prepare('SELECT COUNT(*) as count FROM rounds').get();
+        const roundCount = roundCountResult.count;
         const maxRounds = LEAGUE_DURATION_WEEKS * GAMES_PER_WEEK;
         
         if (roundCount >= maxRounds) {
@@ -711,18 +703,12 @@ function generateWeeklyPairings() {
         const roundId = roundResult.lastInsertRowid;
         
         // Save pairings
-        const insertPairing = db.prepare(`
-            INSERT INTO pairings (round_id, player1_id, player2_id)
-            VALUES (?, ?, ?)
-        `);
-        
-        const savePairings = db.transaction(() => {
-            for (const pair of pairings) {
-                insertPairing.run(roundId, pair.player1.id, pair.player2.id);
-            }
-        });
-        
-        savePairings();
+        for (const pair of pairings) {
+            db.prepare(`
+                INSERT INTO pairings (round_id, player1_id, player2_id)
+                VALUES (?, ?, ?)
+            `).run(roundId, pair.player1.id, pair.player2.id);
+        }
         
         console.log(`✅ Generated ${pairings.length} pairings for round ${roundId} (Round ${roundCount + 1}/${maxRounds})`);
         
@@ -747,7 +733,7 @@ console.log('⏰ Cron jobs scheduled: Wednesday & Friday at 9 AM');
 /**
  * GET /api/admin/users - Get all users (admin only)
  */
-app.get('/api/admin/users', requireAdmin, (req, res) => {
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
     try {
         const users = db.prepare(`
             SELECT u.id, u.username, u.is_admin, u.created_at,
@@ -767,7 +753,7 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
 /**
  * POST /api/admin/toggle-admin - Toggle admin status (admin only)
  */
-app.post('/api/admin/toggle-admin', requireAdmin, (req, res) => {
+app.post('/api/admin/toggle-admin', requireAdmin, async (req, res) => {
     try {
         const { userId } = req.body;
         
@@ -798,7 +784,7 @@ app.post('/api/admin/toggle-admin', requireAdmin, (req, res) => {
 /**
  * GET /api/admin/matches - Get all matches with pagination (admin only)
  */
-app.get('/api/admin/matches', requireAdmin, (req, res) => {
+app.get('/api/admin/matches', requireAdmin, async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = 50;
@@ -816,7 +802,8 @@ app.get('/api/admin/matches', requireAdmin, (req, res) => {
             LIMIT ? OFFSET ?
         `).all(limit, offset);
         
-        const total = db.prepare('SELECT COUNT(*) as count FROM matches').get().count;
+        const totalResult = db.prepare('SELECT COUNT(*) as count FROM matches').get();
+        const total = totalResult.count;
         
         res.json({ matches, total, page, limit });
     } catch (error) {
@@ -828,7 +815,7 @@ app.get('/api/admin/matches', requireAdmin, (req, res) => {
 /**
  * DELETE /api/admin/match/:matchId - Delete a match and recalculate ELO (admin only)
  */
-app.delete('/api/admin/match/:matchId', requireAdmin, (req, res) => {
+app.delete('/api/admin/match/:matchId', requireAdmin, async (req, res) => {
     try {
         const matchId = parseInt(req.params.matchId);
         
@@ -838,43 +825,38 @@ app.delete('/api/admin/match/:matchId', requireAdmin, (req, res) => {
             return res.status(404).json({ error: 'Match not found' });
         }
         
-        // Delete in transaction
-        const deleteTransaction = db.transaction(() => {
-            // Get subsequent matches for both players to recalculate
-            const subsequentMatches = db.prepare(`
-                SELECT * FROM matches 
-                WHERE (winner_id = ? OR loser_id = ? OR winner_id = ? OR loser_id = ?)
-                AND timestamp >= ?
-                ORDER BY timestamp ASC
-            `).all(match.winner_id, match.winner_id, match.loser_id, match.loser_id, match.timestamp);
-            
-            // Delete ELO history entries
-            db.prepare('DELETE FROM elo_history WHERE match_id = ?').run(matchId);
-            
-            // Delete match
-            db.prepare('DELETE FROM matches WHERE id = ?').run(matchId);
-            
-            // Reverse the ELO changes
-            const winner = db.prepare('SELECT * FROM players WHERE id = ?').get(match.winner_id);
-            const loser = db.prepare('SELECT * FROM players WHERE id = ?').get(match.loser_id);
-            
-            db.prepare(`
-                UPDATE players 
-                SET elo_rating = elo_rating - ?, wins = wins - 1, tier = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            `).run(match.elo_change, getTier(winner.elo_rating - match.elo_change), match.winner_id);
-            
-            db.prepare(`
-                UPDATE players 
-                SET elo_rating = elo_rating + ?, losses = losses - 1, tier = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            `).run(match.elo_change, getTier(loser.elo_rating + match.elo_change), match.loser_id);
-            
-            // Update pairing if linked
-            db.prepare('UPDATE pairings SET completed = 0, match_id = NULL WHERE match_id = ?').run(matchId);
-        });
+        // Get subsequent matches for both players to recalculate
+        const subsequentMatches = db.prepare(`
+            SELECT * FROM matches 
+            WHERE (winner_id = ? OR loser_id = ? OR winner_id = ? OR loser_id = ?)
+            AND timestamp >= ?
+            ORDER BY timestamp ASC
+        `).all(match.winner_id, match.winner_id, match.loser_id, match.loser_id, match.timestamp);
         
-        deleteTransaction();
+        // Delete ELO history entries
+        db.prepare('DELETE FROM elo_history WHERE match_id = ?').run(matchId);
+        
+        // Delete match
+        db.prepare('DELETE FROM matches WHERE id = ?').run(matchId);
+        
+        // Reverse the ELO changes
+        const winner = db.prepare('SELECT * FROM players WHERE id = ?').get(match.winner_id);
+        const loser = db.prepare('SELECT * FROM players WHERE id = ?').get(match.loser_id);
+        
+        db.prepare(`
+            UPDATE players 
+            SET elo_rating = elo_rating - ?, wins = wins - 1, tier = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        `).run(match.elo_change, getTier(winner.elo_rating - match.elo_change), match.winner_id);
+        
+        db.prepare(`
+            UPDATE players 
+            SET elo_rating = elo_rating + ?, losses = losses - 1, tier = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        `).run(match.elo_change, getTier(loser.elo_rating + match.elo_change), match.loser_id);
+        
+        // Update pairing if linked
+        db.prepare('UPDATE pairings SET completed = 0, match_id = NULL WHERE match_id = ?').run(matchId);
         
         res.json({ 
             success: true, 
@@ -889,15 +871,27 @@ app.delete('/api/admin/match/:matchId', requireAdmin, (req, res) => {
 /**
  * GET /api/admin/stats - Get system statistics (admin only)
  */
-app.get('/api/admin/stats', requireAdmin, (req, res) => {
+app.get('/api/admin/stats', requireAdmin, async (req, res) => {
     try {
-        const totalUsers = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
-        const totalPlayers = db.prepare('SELECT COUNT(*) as count FROM players').get().count;
-        const totalMatches = db.prepare('SELECT COUNT(*) as count FROM matches').get().count;
-        const totalRounds = db.prepare('SELECT COUNT(*) as count FROM rounds').get().count;
+        const totalUsersResult = db.prepare('SELECT COUNT(*) as count FROM users').get();
+        const totalUsers = totalUsersResult.count;
+        
+        const totalPlayersResult = db.prepare('SELECT COUNT(*) as count FROM players').get();
+        const totalPlayers = totalPlayersResult.count;
+        
+        const totalMatchesResult = db.prepare('SELECT COUNT(*) as count FROM matches').get();
+        const totalMatches = totalMatchesResult.count;
+        
+        const totalRoundsResult = db.prepare('SELECT COUNT(*) as count FROM rounds').get();
+        const totalRounds = totalRoundsResult.count;
+        
         const activeSeason = db.prepare("SELECT * FROM seasons WHERE status = 'active' ORDER BY created_at DESC LIMIT 1").get();
-        const completedPairings = db.prepare('SELECT COUNT(*) as count FROM pairings WHERE completed = 1').get().count;
-        const pendingPairings = db.prepare('SELECT COUNT(*) as count FROM pairings WHERE completed = 0').get().count;
+        
+        const completedPairingsResult = db.prepare('SELECT COUNT(*) as count FROM pairings WHERE completed = 1').get();
+        const completedPairings = completedPairingsResult.count;
+        
+        const pendingPairingsResult = db.prepare('SELECT COUNT(*) as count FROM pairings WHERE completed = 0').get();
+        const pendingPairings = pendingPairingsResult.count;
         
         res.json({
             totalUsers,
@@ -917,7 +911,7 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
 /**
  * GET /api/admin/seasons - Get all seasons (admin only)
  */
-app.get('/api/admin/seasons', requireAdmin, (req, res) => {
+app.get('/api/admin/seasons', requireAdmin, async (req, res) => {
     try {
         const seasons = db.prepare(`
             SELECT s.*, p.name as winner_name, p.elo_rating as winner_elo
@@ -936,7 +930,7 @@ app.get('/api/admin/seasons', requireAdmin, (req, res) => {
 /**
  * POST /api/admin/season/start - Start a new season (admin only)
  */
-app.post('/api/admin/season/start', requireAdmin, (req, res) => {
+app.post('/api/admin/season/start', requireAdmin, async (req, res) => {
     try {
         const { name, resetElo } = req.body;
         
@@ -944,46 +938,41 @@ app.post('/api/admin/season/start', requireAdmin, (req, res) => {
             return res.status(400).json({ error: 'Season name is required' });
         }
         
-        const startTransaction = db.transaction(() => {
-            // Close any active seasons
-            db.prepare("UPDATE seasons SET status = 'completed', end_date = date('now') WHERE status = 'active'").run();
+        // Close any active seasons
+        db.prepare("UPDATE seasons SET status = 'completed', end_date = date('now') WHERE status = 'active'").run();
+        
+        // Close active rounds
+        db.prepare("UPDATE rounds SET status = 'completed' WHERE status = 'active'").run();
+        
+        // Create new season
+        const result = db.prepare(`
+            INSERT INTO seasons (name, start_date, status)
+            VALUES (?, date('now'), 'active')
+        `).run(name);
+        
+        const seasonId = result.lastInsertRowid;
+        
+        // Optionally reset ELO ratings
+        if (resetElo) {
+            db.prepare(`
+                UPDATE players 
+                SET elo_rating = 1250, 
+                    wins = 0, 
+                    losses = 0, 
+                    tier = ?,
+                    updated_at = CURRENT_TIMESTAMP
+            `).run(getTier(1250));
             
-            // Close active rounds
-            db.prepare("UPDATE rounds SET status = 'completed' WHERE status = 'active'").run();
+            // Record ELO reset in history
+            const players = db.prepare('SELECT id FROM players').all();
             
-            // Create new season
-            const result = db.prepare(`
-                INSERT INTO seasons (name, start_date, status)
-                VALUES (?, date('now'), 'active')
-            `).run(name);
-            
-            // Optionally reset ELO ratings
-            if (resetElo) {
+            for (const player of players) {
                 db.prepare(`
-                    UPDATE players 
-                    SET elo_rating = 1250, 
-                        wins = 0, 
-                        losses = 0, 
-                        tier = ?,
-                        updated_at = CURRENT_TIMESTAMP
-                `).run(getTier(1250));
-                
-                // Record ELO reset in history
-                const players = db.prepare('SELECT id FROM players').all();
-                const insertHistory = db.prepare(`
                     INSERT INTO elo_history (player_id, elo_rating)
                     VALUES (?, 1250)
-                `);
-                
-                for (const player of players) {
-                    insertHistory.run(player.id);
-                }
+                `).run(player.id);
             }
-            
-            return result.lastInsertRowid;
-        });
-        
-        const seasonId = startTransaction();
+        }
         
         res.json({ 
             success: true, 
@@ -1000,7 +989,7 @@ app.post('/api/admin/season/start', requireAdmin, (req, res) => {
 /**
  * POST /api/admin/season/end - End current season (admin only)
  */
-app.post('/api/admin/season/end', requireAdmin, (req, res) => {
+app.post('/api/admin/season/end', requireAdmin, async (req, res) => {
     try {
         const activeSeason = db.prepare("SELECT * FROM seasons WHERE status = 'active' ORDER BY created_at DESC LIMIT 1").get();
         
@@ -1016,15 +1005,17 @@ app.post('/api/admin/season/end', requireAdmin, (req, res) => {
         `).get();
         
         // Get total matches and rounds
-        const matchCount = db.prepare(`
+        const matchCountResult = db.prepare(`
             SELECT COUNT(*) as count FROM matches 
             WHERE timestamp >= ?
-        `).get(activeSeason.start_date).count;
+        `).get(activeSeason.start_date);
+        const matchCount = matchCountResult.count;
         
-        const roundCount = db.prepare(`
+        const roundCountResult = db.prepare(`
             SELECT COUNT(*) as count FROM rounds 
             WHERE week_start >= ?
-        `).get(activeSeason.start_date).count;
+        `).get(activeSeason.start_date);
+        const roundCount = roundCountResult.count;
         
         // End season
         db.prepare(`
@@ -1056,9 +1047,9 @@ app.post('/api/admin/season/end', requireAdmin, (req, res) => {
 /**
  * POST /api/force-pairings - Manually trigger pairing generation (for testing)
  */
-app.post('/api/force-pairings', requireAuth, (req, res) => {
+app.post('/api/force-pairings', requireAuth, async (req, res) => {
     try {
-        generateWeeklyPairings();
+        await generateWeeklyPairings();
         res.json({ 
             success: true, 
             message: 'Pairings generated successfully! Check /pairings to see them.' 

@@ -1,34 +1,9 @@
-# Dependencies
 node_modules/
-yarn.lock
-
-# Environment variables
 .env
-
-# Database
 *.db
 *.db-shm
 *.db-wal
-
-# Logs
-logs/
-*.log
-npm-debug.log*
-
-# OS files
 .DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Production
-dist/
-build/
-
-# Kubernetes secrets
-.buildkite/helm/values.*.yaml.local
-*.secret.yaml
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
